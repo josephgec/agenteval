@@ -188,40 +188,70 @@ def test_html_report_lists_failures_not_just_scores(tmp_path):
     assert "claude:opus-5" in page
 
 
-def test_html_report_escapes_agent_authored_text(tmp_path):
-    """The judge quotes spans from the artifacts, so its reasoning carries
-    model-authored text into a page intended for sharing."""
-    result = make_result("t", overall_checks=(False,))
+def test_agent_authored_text_cannot_escape_the_embedded_payload(tmp_path):
+    """The report embeds the run verbatim and renders it in the browser, so the
+    containment question moved: agent text now sits inside a <script> block and
+    a literal `</script>` in an email body would end it early and execute the
+    remainder. The judge quotes spans from the artifacts, so this is
+    model-authored text arriving in a page meant to be shared.
+    """
+    result = make_result("t", overall_checks=(False,), steps=1)
+    result.trajectory.calls[0].input = {
+        "body": "</script><script>alert(1)</script>"
+    }
     result.score.rubric_scores = [
-        RubricScore(
-            "tone",
-            score=0.0,
-            weight=1.0,
-            reasoning="the email said </span><script>alert(1)</script>",
-        )
+        RubricScore("tone", score=0.0, weight=1.0,
+                    reasoning="</SCRIPT ><img src=x onerror=alert(2)>")
     ]
-    result.score.state_checks[0].detail = "<img src=x onerror=alert(2)>"
-    result.score.safety_violations = ["<b>injected</b>"]
+    result.score.safety_violations = ["</script>"]
 
     page = report_mod.write_html([result], tmp_path, {"agent": "a"}).read_text()
+    embedded = page.split('id="payload">')[1].split("</script>")[0]
 
-    assert "<script>alert(1)</script>" not in page
-    assert "&lt;script&gt;" in page
-    assert "<img src=x onerror=alert(2)>" not in page
-    assert "<b>injected</b>" not in page
+    # The precise property: nothing in the payload can open a tag, so it cannot
+    # close the block or introduce an element. The characters survive as data —
+    # `onerror=alert(2)` is still present and still inert, which is why
+    # substring-hunting would test the wrong thing.
+    assert "<" not in embedded
+    assert page.count("</script>") == page.count("<script")
+
+    # And it round-trips, so the reader still sees exactly what the agent wrote.
+    payload = json.loads(embedded)
+    assert payload["results"][0]["score"]["safety_violations"] == ["</script>"]
+    assert (
+        payload["results"][0]["trajectory"]["calls"][0]["input"]["body"]
+        == "</script><script>alert(1)</script>"
+    )
 
 
-def test_html_report_says_so_when_there_is_nothing_to_report(tmp_path):
-    page = report_mod.write_html([make_result()], tmp_path, {"agent": "a"}).read_text()
-    assert "No findings." in page
+def test_a_dangerous_agent_label_cannot_break_the_header(tmp_path):
+    """`agent` is interpolated into markup rather than into the payload."""
+    page = report_mod.write_html(
+        [make_result()], tmp_path, {"agent": '<img src=x onerror=alert(1)>'}
+    ).read_text()
+    assert "<img" not in page  # no element introduced, in the title or the header
+    assert page.count("&lt;img src=x onerror=alert(1)&gt;") == 2
 
 
 def test_html_report_is_self_contained(tmp_path):
-    """No external fetches: the CSP on most sharing surfaces blocks them, and a
-    report that renders differently for the reader is worse than none."""
+    """It has to render identically offline, from file://, years later. Any
+    external reference is a dependency on something outliving the report."""
     page = report_mod.write_html([make_result()], tmp_path, {"agent": "a"}).read_text()
-    for external in ("http://", "https://", "<script"):
+    for external in ("http://", "https://", "src=", "@import", "//fonts."):
         assert external not in page
+
+
+def test_the_report_embeds_exactly_what_was_saved(tmp_path):
+    """The HTML is generated from the same payload as results.json, so the two
+    can never disagree about what happened."""
+    results = [make_result("t", overall_checks=(False,), cost=0.25)]
+    meta = {"agent": "claude:opus-5"}
+    saved = json.loads(report_mod.save(results, tmp_path / "r", meta).read_text())
+    page = report_mod.write_html(results, tmp_path / "r", meta).read_text()
+
+    embedded = json.loads(page.split('id="payload">')[1].split("</script>")[0])
+    assert embedded["results"] == saved["results"]
+    assert embedded["meta"]["agent"] == saved["meta"]["agent"]
 
 
 # --------------------------------------------------------------------------- #

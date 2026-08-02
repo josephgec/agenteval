@@ -72,8 +72,8 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 273 tests, ~1s, no network
-pytest --cov        # gated at 98% (currently 100%)
+pytest              # 353 tests, ~1s, no network
+pytest --cov        # gated at 98%
 ```
 
 An eval harness needs tighter testing than the code it grades, because its
@@ -210,6 +210,40 @@ approve something that violates policy. Enforcing rules in the environment would
 make the task untestable, because the agent could no longer fail. The world
 records what happened; the verifier judges it.
 
+## The report
+
+Every run writes a standalone `report.html` beside its `results.json`.
+
+```bash
+agenteval ui runs/<dir>        # rebuild and open it
+agenteval ui runs/<dir> --no-open
+```
+
+It is a run explorer rather than a scoreboard — the CLI already prints scores,
+so the page exists for the part the terminal is bad at: finding the moment an
+agent went wrong.
+
+- **The trace is a ruled spine.** Ordinary calls are faint nodes on the rule;
+  blocked and errored calls swell into filled squares that break it. You scan a
+  20-step run for deviations instead of reading it. Click any step for its full
+  arguments and output.
+- **Artifacts are rendered as what they are.** Emails the agent sent, documents
+  it wrote, tickets it filed — reconstructed from the call log and shown as
+  prose. That material is exactly what the rubric graded, and it otherwise
+  exists only as JSON inside a tool argument.
+- It opens on the **lowest-scoring run**, which is almost always why the file
+  was opened.
+- `j`/`k` or arrow keys move between runs; **failures only** filters the index.
+
+Everything is inlined and the payload is embedded, so it works from `file://`,
+offline, with no server and no build step. Regeneration matters because the
+report is written once at run time — `agenteval ui` rebuilds old runs against
+the current template rather than making you pay to repeat them.
+
+Agent-authored text reaches this page (an email body, a span the judge quoted),
+so every `<` in the embedded payload is escaped: a literal `</script>` in a
+tool result would otherwise close the block early and execute what followed.
+
 ## Commands
 
 ```bash
@@ -218,6 +252,8 @@ agenteval run --gold                              # offline, free
 agenteval run --agent claude:opus-5 -k 5 -c 8     # 5 repeats, 8 concurrent
 agenteval run --agent claude:sonnet-5:medium --tag writing
 agenteval run --agent claude --no-judge --fail-under 0.8   # CI gate
+agenteval show runs/<dir> [--task ID] [--full]   # trajectory in the terminal
+agenteval ui runs/<dir>                          # the same run in a browser
 agenteval report runs/<dir>
 agenteval compare runs/<a> runs/<b>
 ```

@@ -8,7 +8,6 @@ went to the wrong manager" is.
 
 from __future__ import annotations
 
-import html
 import json
 import statistics
 from collections import defaultdict
@@ -20,17 +19,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from . import ui
 from .types import RunResult
-
-
-def _esc(value: object) -> str:
-    """Escape anything interpolated into the HTML report.
-
-    Most of these strings originate outside the harness. The judge's `reasoning`
-    is the sharpest case: it is instructed to quote spans from the artifacts, so
-    it carries agent-authored text verbatim into a page meant to be shared.
-    """
-    return html.escape(str(value), quote=True)
 
 
 def _grade_color(value: float) -> str:
@@ -203,10 +193,13 @@ def _print_failures(results: list[RunResult], console: Console) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def save(results: list[RunResult], out_dir: Path, meta: dict[str, Any]) -> Path:
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
+def build_payload(results: list[RunResult], meta: dict[str, Any]) -> dict[str, Any]:
+    """The saved shape, built once and shared by the JSON file and the report.
+
+    Assembling it twice is how the two drift apart, and the HTML is generated
+    from exactly what lands on disk.
+    """
+    return {
         "meta": {
             **meta,
             "saved_at": datetime.now(timezone.utc).isoformat(),
@@ -222,8 +215,13 @@ def save(results: list[RunResult], out_dir: Path, meta: dict[str, Any]) -> Path:
         },
         "results": [r.to_dict() for r in results],
     }
+
+
+def save(results: list[RunResult], out_dir: Path, meta: dict[str, Any]) -> Path:
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "results.json"
-    path.write_text(json.dumps(payload, indent=2))
+    path.write_text(json.dumps(build_payload(results, meta), indent=2))
     return path
 
 
@@ -411,100 +409,7 @@ def print_comparison(
 # HTML
 # --------------------------------------------------------------------------- #
 
-_HTML_TEMPLATE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>agenteval — {agent}</title>
-<style>
-:root {{ color-scheme: light dark; --fg:#111; --bg:#fff; --dim:#666; --line:#e4e4e7; }}
-@media (prefers-color-scheme: dark) {{
-  :root {{ --fg:#e8e8ea; --bg:#0f0f11; --dim:#9a9aa2; --line:#2a2a30; }}
-}}
-body {{ font: 15px/1.55 ui-sans-serif,-apple-system,Segoe UI,sans-serif;
-  margin:0; padding:2.5rem 1.25rem; color:var(--fg); background:var(--bg); }}
-main {{ max-width: 62rem; margin: 0 auto; }}
-h1 {{ font-size:1.5rem; margin:0 0 .25rem; }}
-.sub {{ color:var(--dim); margin-bottom:2rem; }}
-table {{ width:100%; border-collapse:collapse; margin-bottom:2.5rem; }}
-th,td {{ text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--line); }}
-th {{ font-weight:600; font-size:.8rem; text-transform:uppercase;
-  letter-spacing:.04em; color:var(--dim); }}
-td.n {{ text-align:right; font-variant-numeric:tabular-nums; }}
-.bar {{ display:inline-block; height:.5rem; border-radius:99px; min-width:2px;
-  vertical-align:middle; }}
-.pass {{ background:#16a34a; }} .mid {{ background:#d97706; }} .fail {{ background:#dc2626; }}
-.card {{ border:1px solid var(--line); border-radius:.6rem; padding:1rem 1.1rem;
-  margin-bottom:1rem; }}
-.card h3 {{ margin:0 0 .5rem; font-size:1rem; }}
-li.x {{ color:#dc2626; }} li.p {{ color:#d97706; }}
-ul {{ margin:.35rem 0 0; padding-left:1.2rem; }}
-.detail {{ color:var(--dim); }}
-.wrap {{ overflow-x:auto; }}
-</style></head><body><main>
-<h1>agenteval</h1>
-<div class="sub">{agent} · {runs} runs · mean {mean:.3f} · ${cost:.3f} · {saved}</div>
-<div class="wrap"><table>
-<tr><th>Task</th><th>Overall</th><th></th><th>State</th><th>Rubric</th>
-<th>Safe</th><th>Steps</th><th>Cost</th></tr>
-{rows}
-</table></div>
-<h2 style="font-size:1.1rem">Findings</h2>
-{findings}
-</main></body></html>
-"""
-
 
 def write_html(results: list[RunResult], out_dir: Path, meta: dict[str, Any]) -> Path:
-    stats = aggregate(results)
-    rows = []
-    for task_id, s in stats.items():
-        mean = s["overall_mean"]
-        cls = "pass" if mean >= 0.85 else "mid" if mean >= 0.5 else "fail"
-        rows.append(
-            f"<tr><td>{_esc(task_id)}</td><td class='n'>{mean:.2f}</td>"
-            f"<td><span class='bar {cls}' style='width:{max(2, mean * 80):.0f}px'>"
-            "</span></td>"
-            f"<td class='n'>{s['state_mean']:.2f}</td>"
-            f"<td class='n'>"
-            f"{'—' if s['rubric_mean'] is None else format(s['rubric_mean'], '.2f')}"
-            "</td>"
-            f"<td class='n'>{'yes' if not s['unsafe_runs'] else 'NO'}</td>"
-            f"<td class='n'>{s['steps_mean']:.0f}</td>"
-            f"<td class='n'>${s['cost_total']:.3f}</td></tr>"
-        )
-
-    findings = []
-    for result in results:
-        failed = [c for c in result.score.state_checks if not c.passed]
-        weak = [r for r in result.score.rubric_scores if r.score < 1.0]
-        if not failed and not weak and result.score.safe:
-            continue
-        items = [
-            f"<li class='x'>unsafe: {_esc(v)}</li>"
-            for v in result.score.safety_violations
-        ]
-        items += [
-            f"<li class='x'>{_esc(c.name)} "
-            f"<span class='detail'>— {_esc(c.detail)}</span></li>"
-            for c in failed
-        ]
-        items += [
-            f"<li class='p'>{_esc(r.id)} "
-            f"<span class='detail'>— {_esc(r.reasoning)}</span></li>"
-            for r in weak
-        ]
-        findings.append(
-            f"<div class='card'><h3>{_esc(result.task_id)}</h3>"
-            f"<ul>{''.join(items)}</ul></div>"
-        )
-
-    page = _HTML_TEMPLATE.format(
-        agent=_esc(meta.get("agent", "unknown")),
-        runs=len(results),
-        mean=statistics.fmean([r.score.overall for r in results]) if results else 0.0,
-        cost=sum(r.cost_usd for r in results),
-        saved=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        rows="\n".join(rows),
-        findings="\n".join(findings) or "<p class='detail'>No findings.</p>",
-    )
-    path = Path(out_dir) / "report.html"
-    path.write_text(page)
-    return path
+    """Write the standalone run explorer. See `agenteval.ui` for the design."""
+    return ui.write(build_payload(results, meta), out_dir)

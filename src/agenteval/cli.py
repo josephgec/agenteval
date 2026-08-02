@@ -7,6 +7,7 @@ import asyncio
 import os
 import re
 import subprocess
+import webbrowser
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import report as report_mod
+from . import ui
 from .agents import ScriptedAgent, build_agent
 from .grading.judge import LLMJudge
 from .runner import RunConfig, run_suite
@@ -281,6 +283,23 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Rebuild a run's report and open it.
+
+    Regeneration matters because the report is written once, at run time. An
+    improvement to the explorer would otherwise only reach runs you pay to
+    repeat — this rebuilds from the saved results instead.
+    """
+    run = Path(args.run)
+    payload = report_mod.load(run)
+    directory = run if run.is_dir() else run.parent
+    path = ui.write(payload, directory)
+    console.print(f"[dim]{path}[/dim]")
+    if not args.no_open:
+        webbrowser.open(path.resolve().as_uri())
+    return 0
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     report_mod.print_comparison(
         report_mod.load(Path(args.left)), report_mod.load(Path(args.right)), console
@@ -387,6 +406,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show thinking blocks and untruncated tool arguments and results",
     )
     p_show.set_defaults(func=cmd_show)
+
+    p_ui = sub.add_parser(
+        "ui", help="Rebuild a run's HTML report and open it in a browser"
+    )
+    p_ui.add_argument("run", help="Run directory or results.json")
+    p_ui.add_argument(
+        "--no-open", action="store_true", help="Write the file without opening it"
+    )
+    p_ui.set_defaults(func=cmd_ui)
 
     p_compare = sub.add_parser("compare", help="Diff two saved runs")
     p_compare.add_argument("left")
