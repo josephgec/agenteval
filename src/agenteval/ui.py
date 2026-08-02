@@ -27,13 +27,10 @@ import html
 import json
 from pathlib import Path
 from typing import Any
-
-_TEMPLATE = """<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__TITLE__</title>
-<style>
+#: Foundations — colour, type and elevation. The design-system project and the
+#: report are generated from this one block, so a palette change in one cannot
+#: silently fail to reach the other.
+TOKENS = """\
 :root {
   --paper:#F7F8FA; --card:#FFFFFF; --ink:#14202E; --muted:#5C6B7F;
   --rule:#D3DAE3; --rule-soft:#E7ECF2; --accent:#2F5FD0;
@@ -61,7 +58,10 @@ _TEMPLATE = """<!doctype html>
   --shadow:0 1px 2px rgba(0,0,0,.35), 0 8px 24px -12px rgba(0,0,0,.6);
   color-scheme:dark;
 }
+"""
 
+#: Reset and the two typographic utilities every component leans on.
+BASE = """\
 * { box-sizing:border-box; }
 body {
   margin:0; background:var(--paper); color:var(--ink);
@@ -72,7 +72,11 @@ body {
   text-transform:uppercase; color:var(--muted); font-weight:600;
 }
 .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+"""
 
+#: Page chrome. Specific to the explorer's two-pane shell, so the design-system
+#: specimens deliberately leave it out.
+CHROME = """\
 /* ---- header ---------------------------------------------------------- */
 header {
   border-bottom:1px solid var(--rule); background:var(--card);
@@ -105,6 +109,17 @@ nav .head { display:flex; align-items:center; gap:.5rem; padding:0 .5rem .6rem; 
 nav label { font-size:11px; color:var(--muted); display:flex; gap:.35rem;
   align-items:center; cursor:pointer; margin-left:auto; }
 
+
+main { padding:1.5rem 1.75rem 5rem; min-width:0; }
+@media (max-width:820px) { main { padding:1.25rem 1rem 4rem; } }
+.section { margin-top:2.25rem; }
+.section > .eyebrow { display:block; margin-bottom:.7rem; }
+"""
+
+#: The component library: score display, trace spine, verdict rows, artifact
+#: cards. Shared verbatim with the design-system specimens.
+COMPONENTS = """\
+/* ---- run index entry -------------------------------------------------- */
 .entry {
   display:block; width:100%; text-align:left; background:none; cursor:pointer;
   border:none; border-radius:7px; padding:.5rem .6rem; margin-bottom:1px;
@@ -126,11 +141,6 @@ nav label { font-size:11px; color:var(--muted); display:flex; gap:.35rem;
 .meter i { display:block; height:100%; border-radius:2px; background:var(--pass); }
 .meter.mid i { background:var(--partial); } .meter.low i { background:var(--fail); }
 .entry[aria-current="true"] .meter i { background:#fff; }
-
-main { padding:1.5rem 1.75rem 5rem; min-width:0; }
-@media (max-width:820px) { main { padding:1.25rem 1rem 4rem; } }
-.section { margin-top:2.25rem; }
-.section > .eyebrow { display:block; margin-bottom:.7rem; }
 
 /* ---- run header ------------------------------------------------------ */
 .runhead h2 { font-size:1.35rem; margin:.15rem 0 .5rem; font-weight:600;
@@ -248,12 +258,26 @@ main { padding:1.5rem 1.75rem 5rem; min-width:0; }
   font-family:var(--body); color:var(--ink); max-height:22rem; overflow:auto;
 }
 .empty { color:var(--muted); font-size:13.5px; font-style:italic; }
+"""
 
+#: Focus ring and motion preference — part of the quality floor, not the look.
+UTIL = """\
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
 @media (prefers-reduced-motion:no-preference) {
   main { animation:rise .18s ease-out; }
   @keyframes rise { from { opacity:0; transform:translateY(4px); } }
 }
+"""
+
+STYLESHEET = "\n".join([TOKENS, BASE, CHROME, COMPONENTS, UTIL])
+
+_TEMPLATE = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+__STYLESHEET__
 </style>
 </head><body>
 <header>
@@ -473,7 +497,8 @@ def render(payload: dict[str, Any]) -> str:
     # sequence keeps the JSON valid, keeps the text readable, and makes it inert.
     data = json.dumps(payload, ensure_ascii=False).replace("<", "\\u003c")
     return (
-        _TEMPLATE.replace("__PAYLOAD__", data)
+        _TEMPLATE.replace("__STYLESHEET__", STYLESHEET)
+        .replace("__PAYLOAD__", data)
         .replace("__AGENT__", agent)
         .replace("__TITLE__", f"agenteval — {agent}")
     )

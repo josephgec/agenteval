@@ -21,3 +21,7 @@ runs/
 .env
 .env.*
 *.pem
+
+# Design-system specimens: generated from ui.py by `agenteval design`, and
+# pushed to claude.ai/design rather than tracked here.
+design/

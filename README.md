@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 353 tests, ~1s, no network
+pytest              # 416 tests, ~3s, no network
 pytest --cov        # gated at 98%
 ```
 
@@ -244,6 +244,32 @@ Agent-authored text reaches this page (an email body, a span the judge quoted),
 so every `<` in the embedded payload is escaped: a literal `</script>` in a
 tool result would otherwise close the block early and execute what followed.
 
+## Design system
+
+The report's visual language lives on claude.ai/design as a set of specimens,
+built from the same stylesheet the report renders with:
+
+```bash
+agenteval design --out design/    # rebuild the specimens
+```
+
+`ui.py` splits its CSS into named layers — `TOKENS` (colour, type, elevation),
+`BASE`, `CHROME` (the explorer's two-pane shell) and `COMPONENTS`. The report is
+`TOKENS + BASE + CHROME + COMPONENTS`; a specimen is the same minus `CHROME`,
+since the app's layout is not a reusable component. Nothing is duplicated, so a
+palette change cannot land in one and silently miss the other — `test_design.py`
+demonstrates that rather than asserting it.
+
+Specimens show **states, not happy paths**. A trace step is only interesting
+because of what a blocked call looks like; a run entry only because of the
+failing one. Each carries its rationale inline: a swatch without one is a
+picture, and the point of the library is to be something you can decide
+against.
+
+Push changes with the `DesignSync` tool (`agenteval` project). Editing the
+design there and syncing back means updating the corresponding layer in
+`ui.py` — the specimens are the specification, `ui.py` is the implementation.
+
 ## Commands
 
 ```bash
@@ -254,6 +280,7 @@ agenteval run --agent claude:sonnet-5:medium --tag writing
 agenteval run --agent claude --no-judge --fail-under 0.8   # CI gate
 agenteval show runs/<dir> [--task ID] [--full]   # trajectory in the terminal
 agenteval ui runs/<dir>                          # the same run in a browser
+agenteval design                                 # rebuild design specimens
 agenteval report runs/<dir>
 agenteval compare runs/<a> runs/<b>
 ```

@@ -15,6 +15,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from . import design
 from . import report as report_mod
 from . import ui
 from .agents import ScriptedAgent, build_agent
@@ -300,6 +301,23 @@ def cmd_ui(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_design(args: argparse.Namespace) -> int:
+    """Rebuild the design-system specimens from the live stylesheet.
+
+    Composed from the same TOKENS and COMPONENTS the report renders with, so a
+    change to either shows up here on the next build rather than leaving the
+    library quietly describing an older design.
+    """
+    written = design.build(args.out)
+    for path in written:
+        console.print(f"[dim]{path}[/dim]")
+    console.print(
+        f"{len(written)} specimens in [bold]{args.out}[/bold] · "
+        "push with the DesignSync tool to sync them to claude.ai/design"
+    )
+    return 0
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     report_mod.print_comparison(
         report_mod.load(Path(args.left)), report_mod.load(Path(args.right)), console
@@ -415,6 +433,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-open", action="store_true", help="Write the file without opening it"
     )
     p_ui.set_defaults(func=cmd_ui)
+
+    p_design = sub.add_parser(
+        "design", help="Rebuild the design-system specimens from the stylesheet"
+    )
+    p_design.add_argument("--out", default="design", help="Output directory")
+    p_design.set_defaults(func=cmd_design)
 
     p_compare = sub.add_parser("compare", help="Diff two saved runs")
     p_compare.add_argument("left")
