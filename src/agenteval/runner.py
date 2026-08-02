@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from . import world as world_pkg  # noqa: F401  (import registers every tool)
 from .agents.base import Agent
-from .cost import cost_usd
+from .cost import UnknownModel, cost_usd
 from .grading.judge import JudgeError, LLMJudge
 from .grading.safety import collect_safety_violations
 from .registry import ToolSession
@@ -23,6 +23,8 @@ from .types import RunResult, Score, Trajectory, Usage
 from .state import World
 
 ProgressFn = Callable[[str, RunResult | None], None]
+#: Builds the agent for a given task. See `run_suite`.
+AgentFactory = Callable[[LoadedTask], Agent]
 
 
 @dataclass
@@ -38,41 +40,72 @@ class RunConfig:
     judge: LLMJudge | None = None
 
 
-async def run_one(
-    task: LoadedTask, agent: Agent, config: RunConfig, repeat: int = 0
-) -> RunResult:
-    world = World(task.spec.seed)
-    trajectory = Trajectory(
-        task_id=task.id, agent=agent.name, model=getattr(agent, "model", None)
+def _note(trajectory: Trajectory, message: str) -> None:
+    """Append a failure to the trajectory without discarding earlier ones."""
+    trajectory.error = (
+        f"{trajectory.error + '; ' if trajectory.error else ''}{message}"
     )
-    session = ToolSession(world, task.spec, trajectory)
 
-    status = "ok"
+
+async def run_one(
+    task: LoadedTask, agent: Agent, config: RunConfig
+) -> RunResult:
+    """Execute and grade one run. Never raises.
+
+    Every stage is contained on purpose. A run is a *measurement*, and a failed
+    measurement is a data point — not grounds for discarding the fourteen that
+    succeeded alongside it. Before this was total, an unpriced model id would
+    let the agent run, spend real money, and then destroy the entire suite from
+    inside the cost accounting.
+    """
+    agent_model = getattr(agent, "model", None)
+    trajectory = Trajectory(task_id=task.id, agent=agent.name, model=agent_model)
+    score = Score(w_state=config.w_state, w_rubric=config.w_rubric)
+    status: str = "ok"
     started = time.time()
+
+    def failed(message: str) -> RunResult:
+        _note(trajectory, message)
+        return RunResult(
+            task_id=task.id, agent=agent.name, model=agent_model,
+            trajectory=trajectory, score=score, status="harness_error",
+            started_at=started,
+        )
+
+    # Setup: a malformed seed or a task naming an unknown tool is a task bug,
+    # and should fail that task rather than the run that follows it.
+    try:
+        world = World(task.spec.seed)
+        session = ToolSession(world, task.spec, trajectory)
+    except Exception as exc:  # noqa: BLE001
+        return failed(f"setup raised {type(exc).__name__}: {exc}")
+
     clock = time.perf_counter()
     try:
         await agent.run(task.spec, session, trajectory)
     except Exception as exc:  # noqa: BLE001 - a crashed agent is a result, not a stop
         status = "agent_error"
-        trajectory.error = f"{type(exc).__name__}: {exc}"
+        _note(trajectory, f"{type(exc).__name__}: {exc}")
     trajectory.wall_seconds = time.perf_counter() - clock
 
     # Grade whatever state the agent left behind, even if it crashed — a run
     # that errors after doing the work is a different failure from one that
     # errors having done nothing, and the checks are what tell them apart.
-    score = Score(w_state=config.w_state, w_rubric=config.w_rubric)
     try:
         score.state_checks = task.verify(world, trajectory)
     except Exception as exc:  # noqa: BLE001 - a broken verifier is a harness bug
         status = "harness_error"
-        trajectory.error = (
-            f"{trajectory.error + '; ' if trajectory.error else ''}"
-            f"verifier raised {type(exc).__name__}: {exc}"
-        )
+        _note(trajectory, f"verifier raised {type(exc).__name__}: {exc}")
 
-    score.safety_violations = collect_safety_violations(world, trajectory, session)
-    if task.safety:
-        score.safety_violations.extend(task.safety(world, trajectory))
+    try:
+        score.safety_violations = collect_safety_violations(
+            world, trajectory, session
+        )
+        if task.safety:
+            score.safety_violations.extend(task.safety(world, trajectory))
+    except Exception as exc:  # noqa: BLE001
+        status = "harness_error"
+        _note(trajectory, f"safety check raised {type(exc).__name__}: {exc}")
 
     judge_usage = Usage()
     judge_model = getattr(config.judge, "model", None) if config.judge else None
@@ -87,21 +120,31 @@ async def run_one(
             # failed attempt was still billed, so its usage is kept.
             status = "harness_error"
             judge_usage = exc.usage
-            trajectory.error = (
-                f"{trajectory.error + '; ' if trajectory.error else ''}{exc}"
-            )
+            _note(trajectory, str(exc))
+        except Exception as exc:  # noqa: BLE001 - a judge bug is not a lost run
+            status = "harness_error"
+            _note(trajectory, f"judge raised {type(exc).__name__}: {exc}")
 
-    agent_model = getattr(agent, "model", None)
+    # Pricing is a reporting concern and must never cost you the measurement.
+    # An unknown model still reports zero loudly, via the status and the error.
+    agent_cost = judge_cost = 0.0
+    try:
+        agent_cost = cost_usd(agent_model, trajectory.usage)
+        # Priced against the judge's own model: it is frequently a different
+        # one from the agent's, and with a local agent it is the only spend.
+        judge_cost = cost_usd(judge_model, judge_usage)
+    except UnknownModel as exc:
+        status = "harness_error"
+        _note(trajectory, f"cost not computed: {exc}")
+
     return RunResult(
         task_id=task.id,
         agent=agent.name,
         model=agent_model,
         trajectory=trajectory,
         score=score,
-        agent_cost_usd=cost_usd(agent_model, trajectory.usage),
-        # Priced against the judge's own model: it is frequently a different
-        # one from the agent's, and with a local agent it is the only spend.
-        judge_cost_usd=cost_usd(judge_model, judge_usage),
+        agent_cost_usd=agent_cost,
+        judge_cost_usd=judge_cost,
         judge_model=judge_model,
         judge_usage=judge_usage,
         status=status,  # type: ignore[arg-type]
@@ -111,25 +154,59 @@ async def run_one(
 
 async def run_suite(
     tasks: list[LoadedTask],
-    agent: Agent,
+    agent: Agent | AgentFactory,
     config: RunConfig | None = None,
     on_progress: ProgressFn | None = None,
 ) -> list[RunResult]:
+    """Run every task, `config.repeats` times each, up to `config.concurrency`.
+
+    `agent` is normally one agent used for every task. A callable is accepted
+    for the case where the agent depends on the task — replaying each task's
+    own reference trajectory, most obviously. That form exists so `--gold` is
+    an ordinary suite run rather than a second, sequential code path that
+    quietly ignored concurrency and drifted from this one.
+    """
     config = config or RunConfig()
     semaphore = asyncio.Semaphore(config.concurrency)
+    build = agent if callable(agent) and not hasattr(agent, "run") else None
 
-    async def guarded(task: LoadedTask, repeat: int) -> RunResult:
+    async def guarded(task: LoadedTask) -> RunResult:
         async with semaphore:
             if on_progress:
                 on_progress(task.id, None)
-            result = await run_one(task, agent, config, repeat)
+            result = await run_one(task, build(task) if build else agent, config)
             if on_progress:
                 on_progress(task.id, result)
             return result
 
     jobs: list[Awaitable[RunResult]] = [
-        guarded(task, r)
-        for task in tasks
-        for r in range(config.repeats)
+        guarded(task) for task in tasks for _ in range(config.repeats)
     ]
-    return list(await asyncio.gather(*jobs))
+    # `run_one` is total, so nothing should arrive here as an exception. This
+    # is the backstop for the case where something does anyway — including a
+    # bug in the progress callback. Losing a whole paid suite to one unexpected
+    # traceback is the failure mode being ruled out.
+    settled = await asyncio.gather(*jobs, return_exceptions=True)
+
+    results: list[RunResult] = []
+    for task, outcome in zip(
+        [t for t in tasks for _ in range(config.repeats)], settled
+    ):
+        if isinstance(outcome, BaseException):
+            trajectory = Trajectory(task_id=task.id, agent=agent.name)
+            trajectory.error = (
+                f"run escaped containment: {type(outcome).__name__}: {outcome}"
+            )
+            results.append(
+                RunResult(
+                    task_id=task.id,
+                    agent=agent.name,
+                    model=getattr(agent, "model", None),
+                    trajectory=trajectory,
+                    score=Score(w_state=config.w_state, w_rubric=config.w_rubric),
+                    status="harness_error",
+                )
+            )
+        else:
+            results.append(outcome)
+    return results

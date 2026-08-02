@@ -183,25 +183,19 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     async def go():
         if args.gold:
-            results = []
-            for task in tasks:
-                agent = ScriptedAgent(task.gold or [], name="gold")
-                for _ in range(config.repeats):
-                    from .runner import run_one
-
-                    result = await run_one(task, agent, config)
-                    progress(task.id, result)
-                    results.append(result)
-            return results
-        # build_agent drops options the chosen backend does not understand, so
-        # --max-turns works the same way regardless of which one is running.
-        agent = build_agent(
-            args.agent,
-            max_turns=args.max_turns,
-            thinking=args.thinking,
-            num_ctx=args.num_ctx,
-            host=args.ollama_host,
-        )
+            # Each task replays its own reference trajectory, so the agent
+            # depends on the task — the one case run_suite takes a factory for.
+            agent = lambda task: ScriptedAgent(task.gold or [], name="gold")  # noqa: E731
+        else:
+            # build_agent drops options the chosen backend does not understand,
+            # so --max-turns behaves the same whichever one is running.
+            agent = build_agent(
+                args.agent,
+                max_turns=args.max_turns,
+                thinking=args.thinking,
+                num_ctx=args.num_ctx,
+                host=args.ollama_host,
+            )
         return await run_suite(tasks, agent, config, on_progress=progress)
 
     results = asyncio.run(go())
@@ -268,6 +262,22 @@ def cmd_report(args: argparse.Namespace) -> int:
             f"${p['cost_usd']:.3f}",
         )
     console.print(table)
+    return 0
+
+
+def cmd_show(args: argparse.Namespace) -> int:
+    payload = report_mod.load(Path(args.run))
+    try:
+        result = report_mod.select_run(payload, args.task, args.index)
+    except KeyError as exc:
+        console.print(f"[red]{exc.args[0]}[/red]")
+        return 2
+    if not args.task:
+        console.print(
+            f"[dim]showing the lowest-scoring run "
+            f"({result['task_id']}); pass --task to pick another[/dim]"
+        )
+    report_mod.print_trajectory(result, console, full=args.full)
     return 0
 
 
@@ -360,6 +370,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_report = sub.add_parser("report", help="Print a saved run")
     p_report.add_argument("run", help="Run directory or results.json")
     p_report.set_defaults(func=cmd_report)
+
+    p_show = sub.add_parser(
+        "show", help="Print one run's trajectory alongside how it was graded"
+    )
+    p_show.add_argument("run", help="Run directory or results.json")
+    p_show.add_argument(
+        "--task", help="Which task (default: the lowest-scoring run)"
+    )
+    p_show.add_argument(
+        "--index", type=int, default=0,
+        help="Which repeat of that task, 0-based (default 0)",
+    )
+    p_show.add_argument(
+        "--full", action="store_true",
+        help="Show thinking blocks and untruncated tool arguments and results",
+    )
+    p_show.set_defaults(func=cmd_show)
 
     p_compare = sub.add_parser("compare", help="Diff two saved runs")
     p_compare.add_argument("left")

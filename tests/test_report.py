@@ -235,6 +235,12 @@ def render(fn, *args) -> str:
     return console.export_text()
 
 
+def render_full(result, full: bool = False) -> str:
+    console = Console(record=True, width=200, force_terminal=False)
+    report_mod.print_trajectory(result.to_dict(), console, full=full)
+    return console.export_text()
+
+
 def test_terminal_output_leads_with_the_failed_check():
     result = make_result("expense_approval", overall_checks=(True, False))
     result.score.state_checks[1].name = "EXP-502 escalated to direct manager"
@@ -281,6 +287,105 @@ def test_terminal_output_caps_the_failure_list():
     results = [make_result(f"t{i}", overall_checks=(False,)) for i in range(20)]
     text = render(report_mod.print_results, results)
     assert "more failures in the JSON results" in text
+
+
+# --------------------------------------------------------------------------- #
+# Trajectory inspection
+# --------------------------------------------------------------------------- #
+
+
+def payload_with(*results):
+    return {"meta": {"agent": "a"}, "results": [r.to_dict() for r in results]}
+
+
+def test_select_run_defaults_to_the_worst_run():
+    """Almost always the one you opened the file to look at."""
+    payload = payload_with(
+        make_result("good", overall_checks=(True,)),
+        make_result("bad", overall_checks=(False,)),
+        make_result("mixed", overall_checks=(True, False)),
+    )
+    assert report_mod.select_run(payload)["task_id"] == "bad"
+
+
+def test_select_run_picks_a_named_task_and_repeat():
+    payload = payload_with(
+        make_result("t", overall_checks=(True,)),
+        make_result("t", overall_checks=(False,)),
+        make_result("other"),
+    )
+    assert report_mod.select_run(payload, "t", 0)["score"]["overall"] == 1.0
+    assert report_mod.select_run(payload, "t", 1)["score"]["overall"] == 0.0
+
+
+def test_select_run_names_what_is_available_when_the_task_is_unknown():
+    payload = payload_with(make_result("alpha"), make_result("beta"))
+    with pytest.raises(KeyError, match="alpha, beta"):
+        report_mod.select_run(payload, "gamma")
+
+
+def test_select_run_rejects_an_out_of_range_repeat():
+    payload = payload_with(make_result("t"))
+    with pytest.raises(KeyError, match="1 run"):
+        report_mod.select_run(payload, "t", 5)
+
+
+def test_select_run_on_an_empty_result_set():
+    with pytest.raises(KeyError, match="empty"):
+        report_mod.select_run({"meta": {}, "results": []})
+
+
+def test_trajectory_view_interleaves_actions_with_grading():
+    """The question being answered is 'which call was the wrong one', so the
+    calls and the checks have to appear together."""
+    result = make_result("expense_approval", overall_checks=(False,), steps=2)
+    result.score.state_checks[0].name = "EXP-502 escalated to direct manager"
+    result.score.state_checks[0].detail = "expected 'EMP-003', got None"
+    result.score.safety_violations = ["attempted forbidden tool admin_delete"]
+    result.score.rubric_scores = [
+        RubricScore("tone", score=0.5, weight=1.0, reasoning="curt")
+    ]
+    text = render_full(result)
+
+    assert "expense_approval" in text
+    assert "tickets_get" in text                        # the calls
+    assert "EXP-502 escalated to direct manager" in text  # the checks
+    assert "expected 'EMP-003', got None" in text         # why it failed
+    assert "attempted forbidden tool admin_delete" in text
+    assert "tone" in text and "curt" in text
+    assert "UNSAFE" in text
+
+
+def test_trajectory_view_truncates_by_default_and_expands_with_full():
+    result = make_result("t", steps=1)
+    result.trajectory.calls[0].output = "x" * 4000
+    result.trajectory.thinking = ["a long private deliberation"]
+
+    clipped = render_full(result, full=False)
+    assert "…" in clipped
+    assert "thinking block(s)" in clipped          # summarised, not shown
+    assert "a long private deliberation" not in clipped
+
+    expanded = render_full(result, full=True)
+    assert "a long private deliberation" in expanded
+    assert expanded.count("x") > 3000
+
+
+def test_trajectory_view_marks_blocked_and_errored_calls():
+    result = make_result("t", steps=2)
+    result.trajectory.calls[0].blocked_reason = "forbidden"
+    result.trajectory.calls[1].is_error = True
+    text = render_full(result)
+    assert "forbidden" in text
+
+
+def test_trajectory_view_handles_a_run_that_did_nothing():
+    result = make_result("t", steps=0, status="agent_error")
+    result.trajectory.error = "RuntimeError: crashed"
+    text = render_full(result)
+    assert "(none)" in text
+    assert "RuntimeError: crashed" in text
+    assert "agent_error" in text
 
 
 def test_comparison_reports_per_task_deltas(tmp_path):

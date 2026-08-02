@@ -40,7 +40,6 @@ class TaskSpec:
     # Which artifacts get shown to the judge. See grading/judge.py.
     rubric_artifacts: list[str] = field(default_factory=list)
     max_steps: int = 40
-    max_tokens_budget: int | None = None
     tags: list[str] = field(default_factory=list)
     # Populated by the loader; used to import verify.py.
     source_dir: str | None = None

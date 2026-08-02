@@ -161,6 +161,94 @@ async def test_one_crashed_run_does_not_take_down_the_suite():
     assert all(r.status == "agent_error" for r in results)
 
 
+# A run is a measurement. A failed measurement is a data point, not grounds for
+# discarding the ones that succeeded beside it — especially when they were paid
+# for. Every stage below used to be able to destroy a whole suite.
+
+
+async def test_an_unpriced_model_does_not_destroy_the_suite():
+    """The regression that motivated making run_one total: the agent runs and
+    spends real money, then cost accounting raises and takes every result with
+    it. Guaranteed to happen the day a new model ships.
+    """
+    class FutureModelAgent:
+        name, model = "future", "claude-opus-99"  # not in PRICING
+
+        async def run(self, task, session, trajectory):
+            trajectory.usage.add(Usage(input_tokens=500_000))
+
+    results = await run_suite(
+        [make_task(), make_task()], FutureModelAgent(), RunConfig(repeats=2)
+    )
+    assert len(results) == 4
+    assert all(r.status == "harness_error" for r in results)
+    assert all("claude-opus-99" in r.trajectory.error for r in results)
+    # The measurement survives even though the price does not.
+    assert all(r.score.state_score == 1.0 for r in results)
+    assert all(r.cost_usd == 0.0 for r in results)
+
+
+async def test_a_malformed_seed_fails_only_its_own_task():
+    broken = make_task()
+    broken.spec.seed = {"acounts": []}  # typo in a task fixture
+    results = await run_suite(
+        [broken, make_task()], ScriptedAgent([]), RunConfig()
+    )
+    statuses = sorted(r.status for r in results)
+    assert statuses == ["harness_error", "ok"]
+    assert "setup raised" in next(
+        r.trajectory.error for r in results if r.status == "harness_error"
+    )
+
+
+async def test_a_task_naming_an_unknown_tool_fails_only_itself():
+    results = await run_suite(
+        [make_task(allowed_tools=["not_a_tool"]), make_task()],
+        ScriptedAgent([]),
+        RunConfig(),
+    )
+    assert sorted(r.status for r in results) == ["harness_error", "ok"]
+
+
+async def test_a_broken_safety_function_is_contained():
+    """The verifier was guarded but its sibling wasn't — an inconsistency that
+    let a one-line task bug lose the suite."""
+    def exploding_safety(world, trajectory):
+        raise RuntimeError("bad safety rule")
+
+    result = await run_one(make_task(safety=exploding_safety),
+                           ScriptedAgent([]), RunConfig())
+    assert result.status == "harness_error"
+    assert "safety check raised RuntimeError" in result.trajectory.error
+    assert result.score.state_score == 1.0  # grading still happened
+
+
+async def test_a_judge_raising_something_unexpected_is_contained():
+    """JudgeError was handled; an ordinary bug in a custom judge was not."""
+    class BuggyJudge:
+        model = "claude-opus-5"
+
+        async def score(self, task, world, trajectory):
+            raise AttributeError("typo in a custom judge")
+
+    task = make_task(rubric=[RubricCriterion(id="a", description="d")])
+    result = await run_one(task, ScriptedAgent([]), RunConfig(judge=BuggyJudge()))
+    assert result.status == "harness_error"
+    assert "judge raised AttributeError" in result.trajectory.error
+
+
+async def test_a_crashing_progress_callback_does_not_lose_results():
+    def exploding_progress(task_id, result):
+        raise RuntimeError("bad reporter")
+
+    results = await run_suite(
+        [make_task()], ScriptedAgent([]), RunConfig(repeats=2),
+        on_progress=exploding_progress,
+    )
+    assert len(results) == 2
+    assert all("escaped containment" in r.trajectory.error for r in results)
+
+
 async def test_a_broken_verifier_is_reported_as_a_harness_error():
     def exploding_verify(world, trajectory):
         raise KeyError("bad_field")

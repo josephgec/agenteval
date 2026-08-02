@@ -235,6 +235,127 @@ def load(path: Path) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Trajectory inspection
+# --------------------------------------------------------------------------- #
+
+
+def _clip(value: Any, limit: int) -> str:
+    text = value if isinstance(value, str) else json.dumps(value)
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def print_trajectory(
+    result: dict[str, Any], console: Console | None = None, full: bool = False
+) -> None:
+    """Render one run so a failure can be read rather than reconstructed.
+
+    Interleaves what the agent did with how it was graded, because the question
+    being asked is almost always "which of these calls was the wrong one", and
+    answering it from a score and a JSON blob is needlessly hard.
+    """
+    console = console or Console()
+    score, process = result["score"], result["process"]
+    limit = 10_000 if full else 160
+
+    status_colour = "green" if result["status"] == "ok" else "yellow"
+    console.print(
+        f"\n[bold]{result['task_id']}[/bold] · {result['agent']} · "
+        f"[{status_colour}]{result['status']}[/{status_colour}]"
+    )
+    console.print(
+        f"overall [bold {_grade_color(score['overall'])}]{score['overall']:.2f}"
+        f"[/bold {_grade_color(score['overall'])}]   "
+        f"state {'—' if score['state'] is None else format(score['state'], '.2f')}   "
+        f"rubric {'—' if score['rubric'] is None else format(score['rubric'], '.2f')}   "
+        f"{'[green]safe[/green]' if score['safe'] else '[red]UNSAFE[/red]'}   "
+        f"[dim]{process['steps']} steps · {process['turns']} turns · "
+        f"{process['wall_seconds']:.0f}s · ${process['cost_usd']:.3f}[/dim]"
+    )
+    if process.get("error"):
+        console.print(f"[yellow]error[/yellow] {process['error']}")
+
+    trajectory = result["trajectory"]
+    if trajectory["thinking"] and full:
+        console.print("\n[bold dim]thinking[/bold dim]")
+        for block in trajectory["thinking"]:
+            console.print(f"  [dim]{_clip(block, limit)}[/dim]")
+    elif trajectory["thinking"]:
+        console.print(
+            f"\n[dim]{len(trajectory['thinking'])} thinking block(s) "
+            "— pass --full to show[/dim]"
+        )
+
+    console.print("\n[bold dim]tool calls[/bold dim]")
+    if not trajectory["calls"]:
+        console.print("  [dim](none)[/dim]")
+    for call in trajectory["calls"]:
+        if call["blocked_reason"]:
+            marker = f"[red]✗[/red] [dim]{call['blocked_reason']}[/dim]"
+        elif call["is_error"]:
+            marker = "[yellow]![/yellow]"
+        else:
+            marker = "[green]·[/green]"
+        console.print(
+            f"  {marker} [bold]{call['step']:>3}[/bold] {call['name']}  "
+            f"[dim]{_clip(call['input'], limit)}[/dim]"
+        )
+        console.print(f"      [dim]→ {_clip(call['output'], limit)}[/dim]")
+
+    if trajectory["final_text"]:
+        console.print("\n[bold dim]final message[/bold dim]")
+        console.print(f"  {_clip(trajectory['final_text'], limit)}")
+
+    console.print("\n[bold dim]checks[/bold dim]")
+    for check in score["checks"]:
+        mark = "[green]✓[/green]" if check["passed"] else "[red]✗[/red]"
+        detail = f" [dim]— {check['detail']}[/dim]" if not check["passed"] else ""
+        console.print(f"  {mark} {check['name']}{detail}")
+
+    if score["rubric_scores"]:
+        console.print("\n[bold dim]rubric[/bold dim]")
+        for item in score["rubric_scores"]:
+            colour = _grade_color(item["score"])
+            console.print(
+                f"  [{colour}]{item['score']:.1f}[/{colour}] {item['id']} "
+                f"[dim]— {_clip(item['reasoning'], limit)}[/dim]"
+            )
+
+    if score["safety_violations"]:
+        console.print("\n[bold red]safety[/bold red]")
+        for violation in score["safety_violations"]:
+            console.print(f"  [red]![/red] {violation}")
+    console.print()
+
+
+def select_run(
+    payload: dict[str, Any], task_id: str | None = None, index: int = 0
+) -> dict[str, Any]:
+    """Pick which run to render.
+
+    With no task named, defaults to the lowest-scoring one — that is virtually
+    always the run you opened the file to look at.
+    """
+    results = payload["results"]
+    if task_id:
+        matching = [r for r in results if r["task_id"] == task_id]
+        if not matching:
+            available = sorted({r["task_id"] for r in results})
+            raise KeyError(
+                f"no run for task {task_id!r} in this result set; "
+                f"available: {', '.join(available)}"
+            )
+        if index >= len(matching):
+            raise KeyError(
+                f"task {task_id!r} has {len(matching)} run(s), no index {index}"
+            )
+        return matching[index]
+    if not results:
+        raise KeyError("this result set is empty")
+    return min(results, key=lambda r: r["score"]["overall"])
+
+
+# --------------------------------------------------------------------------- #
 # Compare
 # --------------------------------------------------------------------------- #
 

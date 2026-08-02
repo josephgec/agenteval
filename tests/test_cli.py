@@ -331,6 +331,40 @@ def test_report_reads_back_a_saved_run(tasks_root, tmp_path, capsys):
     assert "ticket_triage" in text and "gold" in text
 
 
+def test_show_renders_a_trajectory_with_its_grading(tasks_root, tmp_path, capsys):
+    out = tmp_path / "run"
+    cli.main(["--tasks", tasks_root, "run", "--gold", "--task", "ticket_triage",
+              "--out", str(out)])
+    capsys.readouterr()
+
+    assert cli.main(["show", str(out), "--task", "ticket_triage"]) == 0
+    text = capsys.readouterr().out
+    assert "ticket_triage" in text
+    assert "tickets_update" in text   # what it did
+    assert "TKT-2001 priority" in text  # how that was graded
+
+
+def test_show_defaults_to_the_worst_run(tasks_root, tmp_path, capsys):
+    out = tmp_path / "run"
+    cli.main(["--tasks", tasks_root, "run", "--gold", "--out", str(out)])
+    capsys.readouterr()
+
+    assert cli.main(["show", str(out)]) == 0
+    assert "lowest-scoring run" in capsys.readouterr().out
+
+
+def test_show_rejects_an_unknown_task_without_a_traceback(
+    tasks_root, tmp_path, capsys
+):
+    out = tmp_path / "run"
+    cli.main(["--tasks", tasks_root, "run", "--gold", "--task", "ticket_triage",
+              "--out", str(out)])
+    capsys.readouterr()
+
+    assert cli.main(["show", str(out), "--task", "nope"]) == 2
+    assert "ticket_triage" in capsys.readouterr().out  # lists what exists
+
+
 def test_compare_diffs_two_saved_runs(tasks_root, tmp_path, capsys):
     for name in ("a", "b"):
         cli.main(["--tasks", tasks_root, "run", "--gold", "--task", "ticket_triage",
