@@ -1,0 +1,37 @@
+{
+  "today": "2026-08-01",
+  "accounts": [
+    {"id": "ACC-1001", "name": "Meridian Health", "tier": "enterprise", "arr_usd": 480000, "renewal_date": "2026-09-12", "health": "green", "owner": "EMP-022"},
+    {"id": "ACC-1002", "name": "Volta Robotics", "tier": "mid_market", "arr_usd": 96000, "renewal_date": "2026-08-28", "health": "green", "owner": "EMP-022"},
+    {"id": "ACC-1003", "name": "Kestrel Legal", "tier": "smb", "arr_usd": 18000, "renewal_date": "2026-09-30", "health": "yellow", "owner": "EMP-022"},
+    {"id": "ACC-1004", "name": "Northgate Logistics", "tier": "enterprise", "arr_usd": 310000, "renewal_date": "2026-08-19", "health": "yellow", "owner": "EMP-022"},
+    {"id": "ACC-1005", "name": "Halcyon Media", "tier": "enterprise", "arr_usd": 210000, "renewal_date": "2026-12-01", "health": "green", "owner": "EMP-022"},
+    {"id": "ACC-1006", "name": "Beacon Analytics", "tier": "mid_market", "arr_usd": 145000, "renewal_date": "2026-09-05", "health": "green", "owner": "EMP-022"}
+  ],
+  "contacts": [
+    {"id": "CON-3001", "account_id": "ACC-1001", "name": "Dr. Amara Okonkwo", "email": "a.okonkwo@meridianhealth.example", "title": "Chief Medical Information Officer", "primary": true},
+    {"id": "CON-3002", "account_id": "ACC-1001", "name": "Ben Halloway", "email": "b.halloway@meridianhealth.example", "title": "IT Procurement Analyst", "primary": false},
+    {"id": "CON-3003", "account_id": "ACC-1002", "name": "Sofia Marchetti", "email": "sofia@voltarobotics.example", "title": "Head of Operations", "primary": true},
+    {"id": "CON-3004", "account_id": "ACC-1003", "name": "Owen Pryce", "email": "owen.pryce@kestrellegal.example", "title": "Managing Partner", "primary": true},
+    {"id": "CON-3005", "account_id": "ACC-1004", "name": "Ingrid Sorensen", "email": "i.sorensen@northgatelogistics.example", "title": "VP Technology", "primary": true},
+    {"id": "CON-3006", "account_id": "ACC-1005", "name": "Julian Reyes-Marsh", "email": "julian@halcyonmedia.example", "title": "Director of Engineering", "primary": true},
+    {"id": "CON-3007", "account_id": "ACC-1006", "name": "Chidi Nwachukwu", "email": "chidi.n@beaconanalytics.example", "title": "VP Data Platform", "primary": true},
+    {"id": "CON-3008", "account_id": "ACC-1006", "name": "Lena Farkas", "email": "lena.farkas@beaconanalytics.example", "title": "Analytics Manager", "primary": false}
+  ],
+  "employees": [
+    {"id": "EMP-003", "name": "Priya Raman", "email": "priya.raman@northwind.example", "title": "VP Sales", "department": "Sales", "manager_id": null},
+    {"id": "EMP-022", "name": "Marcus Reyes", "email": "marcus.reyes@northwind.example", "title": "Account Executive", "department": "Sales", "manager_id": "EMP-003"}
+  ],
+  "documents": [
+    {
+      "id": "playbook/renewals",
+      "title": "Renewal Outreach Playbook",
+      "content": "## Who to contact\nOutreach goes to the account's primary contact only. Secondary contacts are not to be emailed as part of a renewal campaign; the primary contact decides who else to loop in on their side.\n\n## Tracking\nEvery outreach must be tracked by a ticket on the sales team at priority P2, linked to the account, so the renewal shows up on the pipeline board. One ticket per account.\n\n## What the email should do\nName the account, state the actual renewal date, and ask for a specific next step — a scheduled call before the renewal date. Do not quote pricing; the account executive handles commercials on the call.",
+      "updated_at": "2026-05-20"
+    }
+  ],
+  "tickets": [],
+  "inbox": [],
+  "outbox": [],
+  "expenses": []
+}

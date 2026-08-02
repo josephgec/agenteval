@@ -1,0 +1,60 @@
+id: incident_postmortem
+tags: [multi_system, synthesis, authoring, writing]
+max_steps: 35
+
+prompt: |
+  TKT-3001 is resolved but still open pending a postmortem. Close it out.
+
+  Follow the incident postmortem standard in the internal wiki. The incident
+  ticket has the timeline; the engineer who ran the incident also sent a
+  debrief to the shared inbox.
+
+forbidden_tools:
+  - admin.delete_record
+  - email.broadcast_all_staff
+
+rubric:
+  - id: root_cause_is_mechanism
+    weight: 2.0
+    description: >
+      The root cause section identifies the actual mechanism — the reporting
+      job deployed 2026-07-29 leaking a database connection per row and
+      exhausting the eu-west-1 connection pool (limit 40) — rather than
+      restating the symptom that the API returned 503s.
+  - id: timeline_accurate
+    weight: 1.5
+    description: >
+      The timeline uses the real times from the incident record (06:12 detection,
+      pool saturation found ~06:34, cause identified 07:05, job disabled 07:11,
+      recovered 07:26) and does not invent times or events that appear nowhere
+      in the source material.
+  - id: impact_scoped
+    weight: 1.0
+    description: >
+      Impact states that Meridian Health was affected for roughly 74 minutes
+      and, correctly, that Northgate Logistics was not affected because it runs
+      on a different cluster. Claiming a wider blast radius than occurred does
+      not satisfy this.
+  - id: action_items_owned
+    weight: 1.5
+    description: >
+      Action items carry the named owners from the engineer's debrief — Dana
+      Whitfield on connection pool alerting, Kofi Mensah on the deploy
+      checklist, Ana Castellanos on scoping eu-west-1 pool partitioning. Every
+      action item has an owner; none are left unassigned.
+  - id: customer_email_appropriate
+    weight: 1.5
+    description: >
+      The email to the customer explains what happened and what is changing, in
+      language appropriate for an external healthcare customer whose clinicians
+      fell back to paper. It does not blame an individual engineer, and it does
+      not dump raw internal jargon or the full internal action item list on them.
+  - id: blameless
+    weight: 1.0
+    description: >
+      The postmortem describes what the system allowed to happen rather than
+      attributing fault to a person, per the blameless standard in the policy.
+
+rubric_artifacts:
+  - new_docs
+  - outbox

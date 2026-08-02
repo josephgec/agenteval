@@ -1,0 +1,24 @@
+{
+  "today": "2026-08-01",
+  "employees": [
+    {"id": "EMP-002", "name": "Nadia Bergstrom", "email": "nadia.bergstrom@northwind.example", "title": "Chief Technology Officer", "department": "Executive", "manager_id": null},
+    {"id": "EMP-007", "name": "Ana Castellanos", "email": "ana.castellanos@northwind.example", "title": "Director of Engineering", "department": "Engineering", "manager_id": "EMP-002"},
+    {"id": "EMP-014", "name": "Dana Whitfield", "email": "dana.whitfield@northwind.example", "title": "Senior Software Engineer", "department": "Engineering", "manager_id": "EMP-007"},
+    {"id": "EMP-018", "name": "Kofi Mensah", "email": "kofi.mensah@northwind.example", "title": "IT Operations Lead", "department": "IT", "manager_id": "EMP-002"},
+    {"id": "EMP-045", "name": "Wei Tanaka", "email": "wei.tanaka@northwind.example", "title": "Software Engineer, Platform", "department": "Engineering", "manager_id": "EMP-007", "start_date": "2026-08-11", "location": "Lisbon (remote)", "onboarding_status": "not_started"}
+  ],
+  "documents": [
+    {
+      "id": "policy/onboarding",
+      "title": "New Hire Onboarding Runbook",
+      "content": "## Before the start date\nOnboarding for a new hire must be prepared at least one week before they start. Three things have to exist:\n\n### 1. An onboarding checklist document\nCreate it at the document id `onboarding/<employee_id>` — for example `onboarding/EMP-101`. It must contain these four sections, using these exact headings:\n\n- `## Accounts and access`\n- `## Equipment`\n- `## First week`\n- `## Buddy`\n\nWrite the checklist for the specific role. A platform engineer and a support specialist do not need the same accounts, and a generic list creates work for the manager on day one.\n\n### 2. An equipment ticket\nFile a ticket on the `it` team at priority `P2`. It must name the new hire and state their start date, so IT can work backwards from it. Remote hires need equipment shipped, which takes longer — say where they are based.\n\n### 3. Notify the hiring manager\nEmail the new hire's manager (per the HR directory — do not assume) with a link to the checklist document and anything you need from them. Do not email the new hire; their account is not active until their start date.\n\n## Buddy assignment\nThe buddy should be someone already in the same department, and must not be the hiring manager.",
+      "updated_at": "2026-03-15"
+    }
+  ],
+  "accounts": [],
+  "contacts": [],
+  "tickets": [],
+  "inbox": [],
+  "outbox": [],
+  "expenses": []
+}

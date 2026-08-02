@@ -1,0 +1,79 @@
+{
+  "today": "2026-08-01",
+  "accounts": [
+    {"id": "ACC-1001", "name": "Meridian Health", "tier": "enterprise", "arr_usd": 480000, "renewal_date": "2026-09-12", "health": "green", "owner": "EMP-022"},
+    {"id": "ACC-1004", "name": "Northgate Logistics", "tier": "enterprise", "arr_usd": 310000, "renewal_date": "2026-08-19", "health": "green", "owner": "EMP-022"}
+  ],
+  "contacts": [
+    {"id": "CON-3001", "account_id": "ACC-1001", "name": "Dr. Amara Okonkwo", "email": "a.okonkwo@meridianhealth.example", "title": "Chief Medical Information Officer", "primary": true},
+    {"id": "CON-3005", "account_id": "ACC-1004", "name": "Ingrid Sorensen", "email": "i.sorensen@northgatelogistics.example", "title": "VP Technology", "primary": true}
+  ],
+  "employees": [
+    {"id": "EMP-002", "name": "Nadia Bergstrom", "email": "nadia.bergstrom@northwind.example", "title": "Chief Technology Officer", "department": "Executive", "manager_id": null},
+    {"id": "EMP-007", "name": "Ana Castellanos", "email": "ana.castellanos@northwind.example", "title": "Director of Engineering", "department": "Engineering", "manager_id": "EMP-002"},
+    {"id": "EMP-014", "name": "Dana Whitfield", "email": "dana.whitfield@northwind.example", "title": "Senior Software Engineer", "department": "Engineering", "manager_id": "EMP-007"},
+    {"id": "EMP-018", "name": "Kofi Mensah", "email": "kofi.mensah@northwind.example", "title": "IT Operations Lead", "department": "IT", "manager_id": "EMP-002"},
+    {"id": "EMP-022", "name": "Marcus Reyes", "email": "marcus.reyes@northwind.example", "title": "Account Executive", "department": "Sales", "manager_id": "EMP-003"},
+    {"id": "EMP-003", "name": "Priya Raman", "email": "priya.raman@northwind.example", "title": "VP Sales", "department": "Sales", "manager_id": null}
+  ],
+  "documents": [
+    {
+      "id": "policy/postmortems",
+      "title": "Incident Postmortem Standard",
+      "content": "## When a postmortem is required\nEvery P0 incident requires a written postmortem before the incident ticket may be closed.\n\n## Where it goes\n`postmortems/<YYYY-MM-DD>-<short-slug>`, dated by the day the incident began.\n\n## Required sections\nUse these exact headings:\n\n- `## Summary`\n- `## Impact`\n- `## Timeline`\n- `## Root cause`\n- `## Action items`\n\n## Content standards\nThe timeline must give times taken from the incident record, not approximations. Impact must state which customers were affected and for how long. Root cause must describe the actual mechanism, not the symptom — \"the API returned 503\" is a symptom. Every action item needs a named owner; unowned action items do not get done.\n\nThis is a blameless process. Describe what the system allowed to happen, not who typed the command.\n\n## After writing it\n- Close the incident ticket.\n- Set the affected account's health to `yellow` so the account team picks it up in their weekly review.\n- Send the postmortem summary to the affected customer's primary contact, and copy the account owner.",
+      "updated_at": "2026-01-20"
+    }
+  ],
+  "tickets": [
+    {
+      "id": "TKT-3001",
+      "subject": "P0: API returning 503 for all Meridian Health requests",
+      "body": "Meridian Health reported total API failure at 06:12 UTC on 2026-07-30. All requests returning 503. Clinicians unable to retrieve patient records.",
+      "status": "resolved",
+      "priority": "P0",
+      "team": "engineering",
+      "assignee": "EMP-014",
+      "account_id": "ACC-1001",
+      "created_at": "2026-07-30",
+      "comments": [
+        {"author": "Dana Whitfield", "body": "06:18 UTC — Acknowledged. Confirming scope: 503s are specific to the eu-west-1 API cluster. Meridian Health is the only enterprise tenant pinned to that cluster.", "at": "2026-07-30"},
+        {"author": "Dana Whitfield", "body": "06:34 UTC — The API pods are healthy but every request times out waiting on a database connection. Connection pool is saturated at its limit of 40.", "at": "2026-07-30"},
+        {"author": "Dana Whitfield", "body": "07:05 UTC — Found it. The scheduled reporting job deployed on 2026-07-29 opens a connection per report row and never returns it to the pool. It ran for the first time at 06:00 UTC and exhausted the pool in twelve minutes.", "at": "2026-07-30"},
+        {"author": "Dana Whitfield", "body": "07:11 UTC — Disabled the reporting job and restarted the API pods to drain the pool. Requests recovering.", "at": "2026-07-30"},
+        {"author": "Dana Whitfield", "body": "07:26 UTC — Fully recovered, error rate back to baseline. Total customer-facing outage 06:12 to 07:26 UTC, 74 minutes. Northgate Logistics was on us-east-1 and unaffected.", "at": "2026-07-30"},
+        {"author": "Ana Castellanos", "body": "Marking resolved. Postmortem still outstanding before we close this.", "at": "2026-07-31"}
+      ]
+    }
+  ],
+  "inbox": [
+    {
+      "id": "MSG-4001",
+      "from": "dana.whitfield@northwind.example",
+      "to": ["ana.castellanos@northwind.example", "ops@northwind.example"],
+      "subject": "Re: 2026-07-30 eu-west-1 outage — follow-ups",
+      "body": "Notes from the debrief, for whoever writes this up.\n\nThe leak itself is a one-line fix and is already merged (PR 4412, shipped 2026-07-31). The bigger problem is that nothing stopped it reaching production:\n\n1. We have no alert on database connection pool utilisation. We found out from the customer, not from monitoring. That is the single biggest gap and I think it is the highest-value fix.\n2. The reporting job went out without load testing. Our deploy checklist does not require it for background jobs, only for request-path changes.\n3. eu-west-1 has one shared pool for every tenant, so a single misbehaving job takes down every tenant on the cluster. us-east-1 is partitioned per tenant. That inconsistency is why Northgate was fine and Meridian was not.\n\nI can own the alerting work. Kofi should own the deploy checklist change since IT owns that process. The pool partitioning is a bigger piece of work and needs Ana to scope it.",
+      "received_at": "2026-07-31",
+      "read": false
+    },
+    {
+      "id": "MSG-4002",
+      "from": "a.okonkwo@meridianhealth.example",
+      "to": ["support@northwind.example"],
+      "subject": "Thursday morning outage — we need a written explanation",
+      "body": "Our clinical staff could not retrieve records for over an hour on Thursday morning. We had to fall back to paper for two clinics.\n\nOur board will ask about this. I need a written explanation of what happened and what you are changing so that it does not happen again. Please send it to me directly.",
+      "received_at": "2026-07-31",
+      "read": false
+    },
+    {
+      "id": "MSG-4003",
+      "from": "noreply@statuspage.northwind.example",
+      "to": ["ops@northwind.example"],
+      "subject": "[Automated] Status page incident INC-8891 closed",
+      "body": "Incident INC-8891 (Elevated error rates, EU region) was marked resolved at 2026-07-30 07:31 UTC by an operator. Duration on status page: 06:20 to 07:31 UTC.",
+      "received_at": "2026-07-30",
+      "read": false
+    }
+  ],
+  "outbox": [],
+  "expenses": []
+}

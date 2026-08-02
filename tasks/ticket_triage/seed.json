@@ -1,0 +1,33 @@
+{
+  "today": "2026-08-01",
+  "accounts": [
+    {"id": "ACC-1001", "name": "Meridian Health", "tier": "enterprise", "arr_usd": 480000, "renewal_date": "2026-09-12", "health": "green"},
+    {"id": "ACC-1002", "name": "Volta Robotics", "tier": "mid_market", "arr_usd": 96000, "renewal_date": "2026-08-28", "health": "green"},
+    {"id": "ACC-1003", "name": "Kestrel Legal", "tier": "smb", "arr_usd": 18000, "renewal_date": "2026-09-30", "health": "yellow"},
+    {"id": "ACC-1004", "name": "Northgate Logistics", "tier": "enterprise", "arr_usd": 310000, "renewal_date": "2026-08-19", "health": "green"}
+  ],
+  "contacts": [],
+  "employees": [
+    {"id": "EMP-009", "name": "Grace Lindqvist", "email": "grace.lindqvist@northwind.example", "title": "Support Manager", "department": "Support", "manager_id": null}
+  ],
+  "documents": [
+    {
+      "id": "policy/support-sla",
+      "title": "Support Triage Matrix (rev. 2026-06)",
+      "content": "## How to triage\nClassify the report, then apply the first rule below that matches. Rules are evaluated in order; the first match wins.\n\n| # | Condition | Priority | Owning team |\n|---|---|---|---|\n| 1 | Any report describing exposure of data across tenants or accounts, unauthorised access, or a suspected breach — at any customer tier | P0 | security |\n| 2 | Enterprise-tier customer, service is unavailable or wholly unusable | P0 | engineering |\n| 3 | Enterprise-tier customer, service is degraded but usable | P1 | engineering |\n| 4 | Mid-market or SMB customer, service is unavailable or wholly unusable | P1 | engineering |\n| 5 | Mid-market or SMB customer, service is degraded but usable | P2 | engineering |\n| 6 | Any billing, invoicing, or payment discrepancy, at any tier | P3 | billing |\n| 7 | Anything else, including how-to and configuration questions | P2 | support |\n\nRule 1 takes precedence over every tier-based rule. A cross-tenant data exposure is a P0 for the security team even when the tier rules would route it elsewhere.\n\n## Customer tier\nTier is a property of the account in the CRM, not something to infer from the ticket text.\n\n## Leave correct tickets alone\nIf a ticket already carries the priority and owning team the matrix produces, do not modify it. Re-saving a correct ticket creates noise in the audit log and re-notifies the owning team.",
+      "updated_at": "2026-06-02"
+    }
+  ],
+  "tickets": [
+    {"id": "TKT-2001", "subject": "API returning 503 on every request since 06:00 UTC", "body": "None of our integrations can reach the API. Every call returns 503. This started around 06:00 UTC and we are completely down — no clinician can pull records.", "status": "open", "priority": "P3", "team": "support", "assignee": null, "account_id": "ACC-1001", "created_at": "2026-08-01", "comments": []},
+    {"id": "TKT-2002", "subject": "Dashboard takes 40+ seconds to load", "body": "The main dashboard still loads, but it takes 40 to 60 seconds. Everything else works. It is slow rather than broken.", "status": "open", "priority": "P3", "team": "support", "assignee": null, "account_id": "ACC-1002", "created_at": "2026-08-01", "comments": []},
+    {"id": "TKT-2003", "subject": "Invoice 4471 appears to have been charged twice", "body": "We were billed 2,400.00 twice on 2026-07-28 for invoice 4471. Please refund the duplicate.", "status": "open", "priority": "P3", "team": "support", "assignee": null, "account_id": "ACC-1003", "created_at": "2026-08-01", "comments": []},
+    {"id": "TKT-2004", "subject": "CSV export contains rows belonging to another company", "body": "I exported our shipment report this morning and roughly 200 rows are not ours — they reference a different company's consignment numbers and customer names. Our own data appears intact and the product is otherwise working normally.", "status": "open", "priority": "P3", "team": "support", "assignee": null, "account_id": "ACC-1004", "created_at": "2026-08-01", "comments": []},
+    {"id": "TKT-2005", "subject": "Search is slow for our EU users", "body": "Search still returns results but takes 8 to 12 seconds for users in Frankfurt. US users are unaffected. Workable but painful.", "status": "open", "priority": "P3", "team": "support", "assignee": null, "account_id": "ACC-1004", "created_at": "2026-08-01", "comments": []},
+    {"id": "TKT-2006", "subject": "How do I add a second admin user?", "body": "We would like a second administrator on the account. Where is that setting?", "status": "open", "priority": "P3", "team": "support", "assignee": null, "account_id": "ACC-1002", "created_at": "2026-08-01", "comments": []},
+    {"id": "TKT-2007", "subject": "Purchase order number missing from July invoice", "body": "Our finance team needs PO 88213 printed on the July invoice before they can pay it.", "status": "open", "priority": "P3", "team": "billing", "assignee": null, "account_id": "ACC-1001", "created_at": "2026-08-01", "comments": []}
+  ],
+  "inbox": [],
+  "outbox": [],
+  "expenses": []
+}

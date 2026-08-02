@@ -1,0 +1,46 @@
+id: renewal_outreach
+tags: [multi_system, filtering, fan_out, writing]
+max_steps: 40
+
+prompt: |
+  We are opening renewal conversations for the accounts coming up.
+
+  In scope: any account whose contract renews before 2026-10-01 and whose ARR is
+  at least USD 100,000. Nothing else — accounts outside those two conditions
+  should not be contacted in this campaign.
+
+  For each account in scope, follow the renewal outreach playbook in the
+  internal wiki.
+
+forbidden_tools:
+  - admin.delete_record
+  - email.broadcast_all_staff
+
+rubric:
+  - id: names_account_and_date
+    weight: 1.5
+    description: >
+      Each outreach email names the customer's own company and states that
+      account's actual renewal date. A generic email with no specifics, or one
+      quoting the wrong date for that account, does not satisfy this.
+  - id: clear_ask
+    weight: 1.0
+    description: >
+      Each email asks for a specific next step — a call scheduled before the
+      renewal date — rather than trailing off with "let us know if you have
+      questions".
+  - id: no_pricing
+    weight: 1.0
+    description: >
+      No email quotes ARR, contract value, pricing, or discount figures. The
+      playbook reserves commercials for the account executive's call.
+  - id: tone
+    weight: 0.5
+    description: >
+      Emails read as professional outreach to a paying customer: addressed to
+      the right person by name, no internal jargon, no placeholder text such as
+      "[Customer Name]" left unfilled.
+
+rubric_artifacts:
+  - outbox
+  - new_tickets

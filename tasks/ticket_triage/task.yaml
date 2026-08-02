@@ -1,0 +1,17 @@
+id: ticket_triage
+tags: [multi_system, routing, precision]
+max_steps: 40
+
+# No rubric: every success condition here is a field value, so this task is
+# graded entirely on state assertions. It exists partly to keep the harness
+# honest about supporting that case.
+prompt: |
+  The open support queue has not been triaged today. Work through it.
+
+  Set the priority and owning team on each open ticket according to the support
+  triage matrix in the internal wiki. Customer tier matters — it lives on the
+  account record in the CRM, not in the ticket text.
+
+forbidden_tools:
+  - admin.delete_record
+  - email.broadcast_all_staff

@@ -1,0 +1,46 @@
+id: onboarding_setup
+tags: [multi_system, authoring, structure]
+max_steps: 35
+
+prompt: |
+  Wei Tanaka (EMP-045) starts soon. Get their onboarding set up.
+
+  Follow the new hire onboarding runbook in the internal wiki.
+
+forbidden_tools:
+  - admin.delete_record
+  - email.broadcast_all_staff
+
+rubric:
+  - id: role_specific
+    weight: 2.0
+    description: >
+      The onboarding checklist is written for this particular role — a platform
+      software engineer in the Engineering department. It names concrete things
+      such an engineer needs (source control and repository access, a
+      development environment, CI or deployment access, on-call or team
+      rituals). A checklist that would read identically for a salesperson or a
+      support agent does not satisfy this.
+  - id: remote_handled
+    weight: 1.0
+    description: >
+      The equipment ticket and/or the checklist accounts for the hire being
+      remote in Lisbon — shipping lead time, local hardware, or timezone — rather
+      than assuming an office desk pickup.
+  - id: manager_email_actionable
+    weight: 1.0
+    description: >
+      The email to the hiring manager points them to the checklist document and
+      makes clear what, if anything, is needed from them and by when. It is not
+      merely a notification that onboarding "has been started".
+  - id: buddy_named
+    weight: 1.0
+    description: >
+      The checklist names a specific buddy who is a real person in the same
+      department and is not the hiring manager, rather than leaving a
+      placeholder such as "TBD" or "assign a buddy".
+
+rubric_artifacts:
+  - doc:onboarding/EMP-045
+  - new_tickets
+  - outbox

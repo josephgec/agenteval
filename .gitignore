@@ -1,0 +1,23 @@
+# Environments and build artifacts
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Eval output: trajectories, results.json, report.html. Regenerable, noisy in
+# diffs, and may quote whatever the agent under test produced.
+runs/
+
+# Credentials never belong in the repo. The Anthropic SDK reads either
+# ANTHROPIC_API_KEY from the environment or an `ant auth login` profile under
+# ~/.config/anthropic/ — neither needs a file here.
+.env
+.env.*
+*.pem
