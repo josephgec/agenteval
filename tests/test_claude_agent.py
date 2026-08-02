@@ -146,12 +146,12 @@ async def test_system_block_carries_a_cache_breakpoint():
 
 async def test_tool_schemas_are_passed_through_in_stable_order():
     spec, _, traj, session, agent, client = harness(
-        [message([text("done")])], allowed_tools=["tickets.update", "tickets.get"]
+        [message([text("done")])], allowed_tools=["tickets_update", "tickets_get"]
     )
     await agent.run(spec, session, traj)
 
     names = [t["name"] for t in client.requests[0]["tools"]]
-    assert names == ["tickets.get", "tickets.update"]
+    assert names == ["tickets_get", "tickets_update"]
 
 
 # --------------------------------------------------------------------------- #
@@ -165,8 +165,8 @@ async def test_parallel_tool_calls_return_in_a_single_user_message():
         [
             message(
                 [
-                    tool_use("a", "tickets.get", {"ticket_id": "TKT-1"}),
-                    tool_use("b", "tickets.get", {"ticket_id": "TKT-1"}),
+                    tool_use("a", "tickets_get", {"ticket_id": "TKT-1"}),
+                    tool_use("b", "tickets_get", {"ticket_id": "TKT-1"}),
                 ],
                 stop_reason="tool_use",
             ),
@@ -193,7 +193,7 @@ async def test_assistant_content_is_replayed_verbatim_including_thinking():
     blocks = [
         thinking("reasoning"),
         text("checking"),
-        tool_use("a", "tickets.get", {"ticket_id": "TKT-1"}),
+        tool_use("a", "tickets_get", {"ticket_id": "TKT-1"}),
     ]
     spec, _, traj, session, agent, client = harness(
         [message(blocks, stop_reason="tool_use"), message([text("done")])]
@@ -209,7 +209,7 @@ async def test_tool_results_reach_the_world():
     spec, world, traj, session, agent, _ = harness(
         [
             message(
-                [tool_use("a", "tickets.update",
+                [tool_use("a", "tickets_update",
                           {"ticket_id": "TKT-1", "priority": "P0"})],
                 stop_reason="tool_use",
             ),
@@ -251,7 +251,7 @@ async def test_usage_accumulates_across_turns():
     spec, _, traj, session, agent, _ = harness(
         [
             message(
-                [tool_use("a", "tickets.get", {"ticket_id": "TKT-1"})],
+                [tool_use("a", "tickets_get", {"ticket_id": "TKT-1"})],
                 stop_reason="tool_use",
                 input_tokens=100,
                 output_tokens=20,
@@ -274,9 +274,9 @@ async def test_every_tool_use_gets_a_result_even_when_the_budget_runs_out():
         [
             message(
                 [
-                    tool_use("a", "tickets.get", {"ticket_id": "TKT-1"}),
-                    tool_use("b", "tickets.get", {"ticket_id": "TKT-1"}),
-                    tool_use("c", "tickets.get", {"ticket_id": "TKT-1"}),
+                    tool_use("a", "tickets_get", {"ticket_id": "TKT-1"}),
+                    tool_use("b", "tickets_get", {"ticket_id": "TKT-1"}),
+                    tool_use("c", "tickets_get", {"ticket_id": "TKT-1"}),
                 ],
                 stop_reason="tool_use",
             ),
@@ -295,7 +295,7 @@ async def test_every_tool_use_gets_a_result_even_when_the_budget_runs_out():
 
 async def test_turn_limit_ends_the_run():
     responses = [
-        message([tool_use(str(i), "tickets.get", {"ticket_id": "TKT-1"})],
+        message([tool_use(str(i), "tickets_get", {"ticket_id": "TKT-1"})],
                 stop_reason="tool_use")
         for i in range(6)
     ]

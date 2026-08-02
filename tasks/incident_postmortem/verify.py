@@ -93,7 +93,7 @@ def verify(world: World, trajectory: Trajectory):
         doc_step = next(
             (
                 call.step
-                for call in trajectory.calls_to("docs.write")
+                for call in trajectory.calls_to("docs_write")
                 if str(call.input.get("doc_id", "")).startswith(DOC_PREFIX)
             ),
             None,
@@ -101,7 +101,7 @@ def verify(world: World, trajectory: Trajectory):
         close_step = next(
             (
                 call.step
-                for call in trajectory.calls_to("tickets.update")
+                for call in trajectory.calls_to("tickets_update")
                 if call.input.get("status") == "closed"
             ),
             None,
@@ -140,7 +140,7 @@ def verify(world: World, trajectory: Trajectory):
         "read the engineer's debrief from the inbox",
         any(
             call.input.get("message_id") == "MSG-4001"
-            for call in trajectory.calls_to("email.read")
+            for call in trajectory.calls_to("email_read")
         ),
         detail="never opened MSG-4001, which carries the action item owners",
         weight=0.5,
@@ -250,14 +250,14 @@ Northwind Engineering
 
 
 GOLD = [
-    {"tool": "docs.read", "input": {"doc_id": "policy/postmortems"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-3001"}},
-    {"tool": "email.search_inbox", "input": {"query": "outage"}},
-    {"tool": "email.read", "input": {"message_id": "MSG-4001"}},
-    {"tool": "email.read", "input": {"message_id": "MSG-4002"}},
-    {"tool": "crm.get_account", "input": {"account_id": "ACC-1001"}},
+    {"tool": "docs_read", "input": {"doc_id": "policy/postmortems"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-3001"}},
+    {"tool": "email_search_inbox", "input": {"query": "outage"}},
+    {"tool": "email_read", "input": {"message_id": "MSG-4001"}},
+    {"tool": "email_read", "input": {"message_id": "MSG-4002"}},
+    {"tool": "crm_get_account", "input": {"account_id": "ACC-1001"}},
     {
-        "tool": "docs.write",
+        "tool": "docs_write",
         "input": {
             "doc_id": "postmortems/2026-07-30-eu-west-1-connection-pool-exhaustion",
             "title": "Postmortem — eu-west-1 API outage, 2026-07-30",
@@ -265,7 +265,7 @@ GOLD = [
         },
     },
     {
-        "tool": "email.send",
+        "tool": "email_send",
         "input": {
             "to": [CUSTOMER_EMAIL],
             "cc": [ACCOUNT_OWNER_EMAIL],
@@ -274,7 +274,7 @@ GOLD = [
         },
     },
     {
-        "tool": "tickets.comment",
+        "tool": "tickets_comment",
         "input": {
             "ticket_id": "TKT-3001",
             "body": "Postmortem published at "
@@ -284,9 +284,9 @@ GOLD = [
             "partitioning (Ana). Customer has been written to. Closing.",
         },
     },
-    {"tool": "tickets.update", "input": {"ticket_id": "TKT-3001", "status": "closed"}},
+    {"tool": "tickets_update", "input": {"ticket_id": "TKT-3001", "status": "closed"}},
     {
-        "tool": "crm.update_account",
+        "tool": "crm_update_account",
         "input": {
             "account_id": "ACC-1001",
             "health": "yellow",

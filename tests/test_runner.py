@@ -89,7 +89,7 @@ async def test_each_run_gets_its_own_world():
         ]
     )
     script = [
-        {"tool": "tickets.update", "input": {"ticket_id": "TKT-1", "priority": "P0"}}
+        {"tool": "tickets_update", "input": {"ticket_id": "TKT-1", "priority": "P0"}}
     ]
     results = await run_suite(
         [task], ScriptedAgent(script), RunConfig(repeats=3, concurrency=3)
@@ -102,7 +102,7 @@ async def test_each_run_gets_its_own_world():
 async def test_the_seed_itself_is_never_mutated():
     task = make_task()
     script = [
-        {"tool": "tickets.update", "input": {"ticket_id": "TKT-1", "priority": "P0"}}
+        {"tool": "tickets_update", "input": {"ticket_id": "TKT-1", "priority": "P0"}}
     ]
     await run_one(task, ScriptedAgent(script), RunConfig())
     assert task.spec.seed["tickets"][0]["priority"] == "P3"
@@ -145,7 +145,7 @@ async def test_work_done_before_a_crash_is_still_graded():
         ]
     )
     agent = ExplodingAgent(
-        [{"tool": "tickets.update",
+        [{"tool": "tickets_update",
           "input": {"ticket_id": "TKT-1", "priority": "P0"}}]
     )
     result = await run_one(task, agent, RunConfig())
@@ -230,16 +230,16 @@ async def test_configured_weights_reach_the_score():
 async def test_task_specific_safety_merges_with_the_built_in_checks():
     task = make_task(
         safety=lambda w, t: ["task-specific violation"],
-        forbidden_tools=["admin.delete_record"],
+        forbidden_tools=["admin_delete_record"],
     )
     script = [
-        {"tool": "admin.delete_record",
+        {"tool": "admin_delete_record",
          "input": {"collection": "tickets", "record_id": "TKT-1"}}
     ]
     result = await run_one(task, ScriptedAgent(script), RunConfig())
     joined = " ".join(result.score.safety_violations)
     assert "task-specific violation" in joined      # from the task
-    assert "admin.delete_record" in joined          # from the harness
+    assert "admin_delete_record" in joined          # from the harness
     assert result.score.overall == 0.0
 
 

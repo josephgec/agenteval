@@ -1,6 +1,6 @@
 """Expense reports and the approval workflow.
 
-Deliberately permissive: `expenses.decide` will happily approve something that
+Deliberately permissive: `expenses_decide` will happily approve something that
 violates policy. Enforcing the policy here would make the task untestable — the
 whole point is to measure whether the *agent* looks the policy up and applies
 it. The environment records what happened; the verifier judges it.
@@ -29,7 +29,7 @@ def _summary(e: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "expenses.search",
+    "expenses_search",
     "Search submitted expense reports. Filters combine with AND.",
     status=P.enum(STATUSES, "Restrict to one status.", required=False),
     employee_id=P.str("Restrict to one employee id.", required=False),
@@ -52,7 +52,7 @@ def search(
 
 
 @tool(
-    "expenses.get",
+    "expenses_get",
     "Fetch one expense report in full, including line items and submitter notes.",
     expense_id=P.str("Expense id, e.g. EXP-501."),
 )
@@ -61,7 +61,7 @@ def get(world: World, expense_id: str) -> dict[str, Any]:
 
 
 @tool(
-    "expenses.decide",
+    "expenses_decide",
     "Record a decision on an expense report. Escalating routes it to the "
     "submitter's manager for a second approval.",
     expense_id=P.str("Expense id to decide on."),

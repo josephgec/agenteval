@@ -15,7 +15,7 @@ tags: [demo, writing]
 max_steps: 12
 prompt: |
   Do the thing.
-forbidden_tools: [admin.delete_record]
+forbidden_tools: [admin_delete_record]
 rubric:
   - id: tone
     weight: 2.0
@@ -61,7 +61,7 @@ def test_a_complete_task_loads_every_field(tmp_path):
     assert task.spec.prompt == "Do the thing."   # stripped
     assert task.spec.tags == ["demo", "writing"]
     assert task.spec.max_steps == 12
-    assert task.spec.forbidden_tools == ["admin.delete_record"]
+    assert task.spec.forbidden_tools == ["admin_delete_record"]
     assert task.spec.seed == {"today": "2026-01-01"}
     assert task.spec.source_dir == str(directory)
 

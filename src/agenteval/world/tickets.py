@@ -26,7 +26,7 @@ def _summary(t: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "tickets.search",
+    "tickets_search",
     "Search support tickets. Filters are optional and combine with AND. "
     "Returns summaries; use tickets.get for the body and comments.",
     status=P.enum(STATUSES, "Restrict to one status.", required=False),
@@ -60,7 +60,7 @@ def search(
 
 
 @tool(
-    "tickets.get",
+    "tickets_get",
     "Fetch one ticket in full, including body and comment thread.",
     ticket_id=P.str("Ticket id, e.g. TKT-1042."),
 )
@@ -69,7 +69,7 @@ def get(world: World, ticket_id: str) -> dict[str, Any]:
 
 
 @tool(
-    "tickets.create",
+    "tickets_create",
     "File a new support ticket.",
     subject=P.str("Short one-line summary."),
     body=P.str("Full description of the issue or request."),
@@ -117,7 +117,7 @@ def create(
 
 
 @tool(
-    "tickets.update",
+    "tickets_update",
     "Update an existing ticket. Only the fields you pass are changed.",
     ticket_id=P.str("Ticket id to update."),
     status=P.enum(STATUSES, "New status.", required=False),
@@ -156,7 +156,7 @@ def update(
 
 
 @tool(
-    "tickets.comment",
+    "tickets_comment",
     "Append a comment to a ticket's thread. Visible to the customer.",
     ticket_id=P.str("Ticket id to comment on."),
     body=P.str("Comment text."),

@@ -60,7 +60,7 @@ def verify(world: World, trajectory: Trajectory):
         "read the triage matrix",
         any(
             call.input.get("doc_id") == "policy/support-sla"
-            for call in trajectory.calls_to("docs.read")
+            for call in trajectory.calls_to("docs_read")
         ),
         detail="never opened policy/support-sla",
         weight=0.5,
@@ -68,8 +68,8 @@ def verify(world: World, trajectory: Trajectory):
 
     c.add(
         "looked up customer tier in the CRM",
-        bool(trajectory.calls_to("crm.get_account"))
-        or bool(trajectory.calls_to("crm.search_accounts")),
+        bool(trajectory.calls_to("crm_get_account"))
+        or bool(trajectory.calls_to("crm_search_accounts")),
         detail="never queried the CRM, so tier was guessed from ticket text",
         weight=0.5,
     )
@@ -79,23 +79,23 @@ def verify(world: World, trajectory: Trajectory):
 
 def _fix(ticket_id: str, priority: str, team: str) -> dict:
     return {
-        "tool": "tickets.update",
+        "tool": "tickets_update",
         "input": {"ticket_id": ticket_id, "priority": priority, "team": team},
     }
 
 
 GOLD = [
-    {"tool": "docs.read", "input": {"doc_id": "policy/support-sla"}},
-    {"tool": "tickets.search", "input": {"status": "open"}},
-    {"tool": "crm.search_accounts", "input": {}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2001"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2002"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2003"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2004"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2005"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2006"}},
-    {"tool": "tickets.get", "input": {"ticket_id": "TKT-2007"}},
-    {"tool": "crm.get_account", "input": {"account_id": "ACC-1004"}},
+    {"tool": "docs_read", "input": {"doc_id": "policy/support-sla"}},
+    {"tool": "tickets_search", "input": {"status": "open"}},
+    {"tool": "crm_search_accounts", "input": {}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2001"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2002"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2003"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2004"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2005"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2006"}},
+    {"tool": "tickets_get", "input": {"ticket_id": "TKT-2007"}},
+    {"tool": "crm_get_account", "input": {"account_id": "ACC-1004"}},
     *[_fix(tid, pri, team) for tid, (pri, team) in EXPECTED.items()],
     {
         "say": "Triaged six tickets. TKT-2004 is the one to look at first — "

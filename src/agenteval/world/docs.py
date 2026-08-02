@@ -9,7 +9,7 @@ from ..state import World, WorldError
 
 
 @tool(
-    "docs.list",
+    "docs_list",
     "List documents in the internal wiki. Returns ids and titles only.",
     prefix=P.str(
         "Only documents whose id starts with this prefix, e.g. 'policy/'.",
@@ -27,7 +27,7 @@ def list_docs(world: World, prefix: str | None = None) -> dict[str, Any]:
 
 
 @tool(
-    "docs.read",
+    "docs_read",
     "Read one wiki document in full.",
     doc_id=P.str("Document id, e.g. policy/expenses."),
 )
@@ -36,7 +36,7 @@ def read(world: World, doc_id: str) -> dict[str, Any]:
 
 
 @tool(
-    "docs.write",
+    "docs_write",
     "Create a wiki document, or replace the body of an existing one.",
     doc_id=P.str("Document id / path, e.g. postmortems/2026-07-30-outage."),
     title=P.str("Human-readable title."),

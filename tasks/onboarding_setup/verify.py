@@ -82,8 +82,8 @@ def verify(world: World, trajectory: Trajectory):
 
     c.add(
         "looked the manager up in the HR directory",
-        bool(trajectory.calls_to("hr.get_employee"))
-        or bool(trajectory.calls_to("hr.search_employees")),
+        bool(trajectory.calls_to("hr_get_employee"))
+        or bool(trajectory.calls_to("hr_search_employees")),
         detail="never queried HR, so the manager was assumed",
         weight=0.5,
     )
@@ -131,12 +131,12 @@ is the default first port of call for the first month.
 
 
 GOLD = [
-    {"tool": "docs.read", "input": {"doc_id": "policy/onboarding"}},
-    {"tool": "hr.get_employee", "input": {"employee_id": "EMP-045"}},
-    {"tool": "hr.get_employee", "input": {"employee_id": "EMP-007"}},
-    {"tool": "hr.search_employees", "input": {"department": "Engineering"}},
+    {"tool": "docs_read", "input": {"doc_id": "policy/onboarding"}},
+    {"tool": "hr_get_employee", "input": {"employee_id": "EMP-045"}},
+    {"tool": "hr_get_employee", "input": {"employee_id": "EMP-007"}},
+    {"tool": "hr_search_employees", "input": {"department": "Engineering"}},
     {
-        "tool": "docs.write",
+        "tool": "docs_write",
         "input": {
             "doc_id": DOC_ID,
             "title": "Onboarding — Wei Tanaka (EMP-045), Software Engineer, Platform",
@@ -144,7 +144,7 @@ GOLD = [
         },
     },
     {
-        "tool": "tickets.create",
+        "tool": "tickets_create",
         "input": {
             "subject": "Equipment for new hire Wei Tanaka — start date 2026-08-11",
             "body": "Wei Tanaka (EMP-045) joins the Platform team on 2026-08-11 "
@@ -163,7 +163,7 @@ GOLD = [
         },
     },
     {
-        "tool": "email.send",
+        "tool": "email_send",
         "input": {
             "to": [MANAGER_EMAIL],
             "subject": "Wei Tanaka onboarding ready for your review (starts 2026-08-11)",

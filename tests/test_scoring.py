@@ -79,13 +79,13 @@ def test_calls_to_ignores_blocked_calls():
 
     trajectory = Trajectory(task_id="t", agent="a")
     trajectory.calls = [
-        ToolCall(step=1, name="docs.read", input={"doc_id": "p"}, output="ok"),
-        ToolCall(step=2, name="docs.read", input={}, output="err",
+        ToolCall(step=1, name="docs_read", input={"doc_id": "p"}, output="ok"),
+        ToolCall(step=2, name="docs_read", input={}, output="err",
                  blocked_reason="bad_args"),
     ]
-    assert len(trajectory.calls_to("docs.read")) == 1
-    assert trajectory.called("docs.read") is True
-    assert trajectory.called("docs.write") is False
+    assert len(trajectory.calls_to("docs_read")) == 1
+    assert trajectory.called("docs_read") is True
+    assert trajectory.called("docs_write") is False
     assert trajectory.steps == 2  # blocked calls still count against budget
 
 

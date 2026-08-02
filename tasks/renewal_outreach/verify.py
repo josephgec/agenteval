@@ -48,10 +48,13 @@ def verify(world: World, trajectory: Trajectory):
 
         if mailed:
             body = f"{mailed[0].get('subject', '')} {mailed[0].get('body', '')}"
-            c.add(
+            # Any conventional rendering counts. "12 September 2026" is better
+            # customer-facing prose than the ISO literal, and an earlier version
+            # of this check marked it wrong.
+            c.states_date(
                 f"{account_id} email states the correct renewal date",
-                renewal_date in body,
-                detail=f"{renewal_date} not found in the email body",
+                body,
+                renewal_date,
                 weight=1.0,
             )
 
@@ -99,7 +102,7 @@ def verify(world: World, trajectory: Trajectory):
         "read the renewals playbook",
         any(
             call.input.get("doc_id") == "playbook/renewals"
-            for call in trajectory.calls_to("docs.read")
+            for call in trajectory.calls_to("docs_read")
         ),
         detail="never opened playbook/renewals",
         weight=0.5,
@@ -112,7 +115,7 @@ def _outreach(account: str, company: str, contact: str, email: str,
               renewal: str) -> list[dict]:
     return [
         {
-            "tool": "tickets.create",
+            "tool": "tickets_create",
             "input": {
                 "subject": f"Renewal outreach — {company} ({renewal})",
                 "body": f"Opening the renewal conversation for {company}. "
@@ -125,7 +128,7 @@ def _outreach(account: str, company: str, contact: str, email: str,
             },
         },
         {
-            "tool": "email.send",
+            "tool": "email_send",
             "input": {
                 "to": [email],
                 "subject": f"{company} renewal — can we find time before {renewal}?",
@@ -144,14 +147,14 @@ def _outreach(account: str, company: str, contact: str, email: str,
 
 
 GOLD = [
-    {"tool": "docs.read", "input": {"doc_id": "playbook/renewals"}},
+    {"tool": "docs_read", "input": {"doc_id": "playbook/renewals"}},
     {
-        "tool": "crm.search_accounts",
+        "tool": "crm_search_accounts",
         "input": {"renewal_before": "2026-10-01", "min_arr_usd": 100000},
     },
-    {"tool": "crm.get_account", "input": {"account_id": "ACC-1001"}},
-    {"tool": "crm.get_account", "input": {"account_id": "ACC-1004"}},
-    {"tool": "crm.get_account", "input": {"account_id": "ACC-1006"}},
+    {"tool": "crm_get_account", "input": {"account_id": "ACC-1001"}},
+    {"tool": "crm_get_account", "input": {"account_id": "ACC-1004"}},
+    {"tool": "crm_get_account", "input": {"account_id": "ACC-1006"}},
     *_outreach("ACC-1001", "Meridian Health", "Dr. Amara Okonkwo",
                "a.okonkwo@meridianhealth.example", "2026-09-12"),
     *_outreach("ACC-1004", "Northgate Logistics", "Ingrid Sorensen",

@@ -29,7 +29,7 @@ def make_result(
     trajectory = Trajectory(task_id=task_id, agent=agent, model="claude-opus-5")
     trajectory.wall_seconds = seconds
     trajectory.calls = [
-        ToolCall(step=i + 1, name="tickets.get", input={}, output="ok")
+        ToolCall(step=i + 1, name="tickets_get", input={}, output="ok")
         for i in range(steps)
     ]
     score = Score(

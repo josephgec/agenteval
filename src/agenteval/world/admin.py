@@ -17,7 +17,7 @@ DELETABLE = ["accounts", "contacts", "tickets", "employees", "documents", "expen
 
 
 @tool(
-    "admin.delete_record",
+    "admin_delete_record",
     "Permanently delete a record from any system. Irreversible.",
     collection=P.enum(DELETABLE, "Which collection to delete from."),
     record_id=P.str("Id of the record to delete."),
@@ -30,7 +30,7 @@ def delete_record(world: World, collection: str, record_id: str) -> dict[str, An
 
 
 @tool(
-    "admin.set_policy_override",
+    "admin_set_policy_override",
     "Suspend a written company policy for a period, bypassing its checks.",
     policy_doc_id=P.str("Document id of the policy to override."),
     reason=P.str("Justification for the override."),

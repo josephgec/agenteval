@@ -84,13 +84,13 @@ async def test_num_ctx_is_configurable():
 
 async def test_tools_are_sent_in_openai_function_format():
     spec, _, traj, session, agent, sent = harness(
-        [reply("done")], task_kwargs={"allowed_tools": ["tickets.get"]}
+        [reply("done")], task_kwargs={"allowed_tools": ["tickets_get"]}
     )
     await agent.run(spec, session, traj)
 
     [tool] = sent[0]["tools"]
     assert tool["type"] == "function"
-    assert tool["function"]["name"] == "tickets.get"
+    assert tool["function"]["name"] == "tickets_get"
     assert tool["function"]["description"]
     # Our JSON Schema is passed through unchanged as `parameters`.
     assert tool["function"]["parameters"]["required"] == ["ticket_id"]
@@ -122,7 +122,7 @@ async def test_tool_calls_reach_the_world_and_results_go_back():
     spec, world, traj, session, agent, sent = harness(
         [
             reply(tool_calls=[
-                call("tickets.update", {"ticket_id": "TKT-1", "priority": "P0"})
+                call("tickets_update", {"ticket_id": "TKT-1", "priority": "P0"})
             ]),
             reply("all done"),
         ]
@@ -132,7 +132,7 @@ async def test_tool_calls_reach_the_world_and_results_go_back():
     assert world.find("tickets", "TKT-1")["priority"] == "P0"
     tool_messages = [m for m in sent[1]["messages"] if m["role"] == "tool"]
     assert len(tool_messages) == 1
-    assert tool_messages[0]["tool_name"] == "tickets.update"
+    assert tool_messages[0]["tool_name"] == "tickets_update"
     assert traj.final_text == "all done"
 
 
@@ -140,8 +140,8 @@ async def test_parallel_tool_calls_are_all_executed():
     spec, _, traj, session, agent, sent = harness(
         [
             reply(tool_calls=[
-                call("tickets.get", {"ticket_id": "TKT-1"}),
-                call("tickets.get", {"ticket_id": "TKT-1"}),
+                call("tickets_get", {"ticket_id": "TKT-1"}),
+                call("tickets_get", {"ticket_id": "TKT-1"}),
             ]),
             reply("done"),
         ]
@@ -152,7 +152,7 @@ async def test_parallel_tool_calls_are_all_executed():
 
 
 async def test_the_assistant_turn_is_echoed_back_with_its_tool_calls():
-    calls = [call("tickets.get", {"ticket_id": "TKT-1"})]
+    calls = [call("tickets_get", {"ticket_id": "TKT-1"})]
     spec, _, traj, session, agent, sent = harness(
         [reply("checking", tool_calls=calls), reply("done")]
     )
@@ -166,7 +166,7 @@ async def test_the_assistant_turn_is_echoed_back_with_its_tool_calls():
 async def test_usage_maps_from_ollamas_counters():
     spec, _, traj, session, agent, _ = harness(
         [
-            reply(tool_calls=[call("tickets.get", {"ticket_id": "TKT-1"})],
+            reply(tool_calls=[call("tickets_get", {"ticket_id": "TKT-1"})],
                   prompt_tokens=500, eval_tokens=40),
             reply("done", prompt_tokens=700, eval_tokens=60),
         ]
@@ -195,7 +195,7 @@ async def test_arguments_may_arrive_as_a_json_string():
     spec, world, traj, session, agent, _ = harness(
         [
             reply(tool_calls=[
-                call("tickets.update",
+                call("tickets_update",
                      json.dumps({"ticket_id": "TKT-1", "priority": "P1"}))
             ]),
             reply("done"),
@@ -208,7 +208,7 @@ async def test_arguments_may_arrive_as_a_json_string():
 async def test_unparseable_arguments_become_a_tool_error_not_a_crash():
     spec, _, traj, session, agent, _ = harness(
         [
-            reply(tool_calls=[call("tickets.get", "{not json at all")]),
+            reply(tool_calls=[call("tickets_get", "{not json at all")]),
             reply("sorry"),
         ]
     )
@@ -222,7 +222,7 @@ async def test_unparseable_arguments_become_a_tool_error_not_a_crash():
 
 async def test_a_json_scalar_instead_of_an_object_is_handled():
     spec, _, traj, session, agent, _ = harness(
-        [reply(tool_calls=[call("tickets.get", "42")]), reply("done")]
+        [reply(tool_calls=[call("tickets_get", "42")]), reply("done")]
     )
     await agent.run(spec, session, traj)
     assert traj.calls[0].blocked_reason == "bad_args"
@@ -241,7 +241,7 @@ async def test_an_invented_tool_name_is_reported_back_to_the_model():
 
 async def test_a_runaway_loop_is_stopped_by_the_turn_limit():
     spec, _, traj, session, agent, _ = harness(
-        [reply(tool_calls=[call("tickets.get", {"ticket_id": "TKT-1"})])] * 6
+        [reply(tool_calls=[call("tickets_get", {"ticket_id": "TKT-1"})])] * 6
     )
     await agent.run(spec, session, traj)
     assert "turn limit" in traj.error
@@ -249,7 +249,7 @@ async def test_a_runaway_loop_is_stopped_by_the_turn_limit():
 
 async def test_the_step_budget_ends_the_run():
     spec, _, traj, session, agent, _ = harness(
-        [reply(tool_calls=[call("tickets.get", {"ticket_id": "TKT-1"})])] * 6,
+        [reply(tool_calls=[call("tickets_get", {"ticket_id": "TKT-1"})])] * 6,
         task_kwargs={"max_steps": 2},
     )
     await agent.run(spec, session, traj)
@@ -294,7 +294,7 @@ async def test_nearing_the_context_limit_is_recorded_as_a_finding():
 async def test_the_context_warning_is_not_repeated_every_turn():
     spec, _, traj, session, agent, _ = harness(
         [
-            reply(tool_calls=[call("tickets.get", {"ticket_id": "TKT-1"})],
+            reply(tool_calls=[call("tickets_get", {"ticket_id": "TKT-1"})],
                   prompt_tokens=7900),
             reply("done", prompt_tokens=7950),
         ],

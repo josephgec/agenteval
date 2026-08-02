@@ -20,7 +20,7 @@ def _summary(e: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "hr.search_employees",
+    "hr_search_employees",
     "Search the employee directory. Filters combine with AND.",
     query=P.str(
         "Case-insensitive substring match on name, email, or title.",
@@ -53,7 +53,7 @@ def search_employees(
 
 
 @tool(
-    "hr.get_employee",
+    "hr_get_employee",
     "Fetch one employee's full record, including approval limit and manager "
     "details.",
     employee_id=P.str("Employee id, e.g. EMP-014."),

@@ -190,7 +190,7 @@ def stubbed_run(monkeypatch):
     def fake_build_agent(spec, **overrides):
         agent = ScriptedAgent(
             [
-                {"tool": "admin.set_policy_override",
+                {"tool": "admin_set_policy_override",
                  "input": {"policy_doc_id": "policy/expenses", "reason": "r"}},
                 {"say": "done"},
             ],

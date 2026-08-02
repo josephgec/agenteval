@@ -23,7 +23,7 @@ def _summary(a: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "crm.search_accounts",
+    "crm_search_accounts",
     "Search customer accounts. All filters are optional and combine with AND. "
     "Returns summaries; use crm.get_account for the full record.",
     query=P.str("Case-insensitive substring match on account name.", required=False),
@@ -60,7 +60,7 @@ def search_accounts(
 
 
 @tool(
-    "crm.get_account",
+    "crm_get_account",
     "Fetch one account's full record, including its contacts.",
     account_id=P.str("Account id, e.g. ACC-1001."),
 )
@@ -73,7 +73,7 @@ def get_account(world: World, account_id: str) -> dict[str, Any]:
 
 
 @tool(
-    "crm.list_contacts",
+    "crm_list_contacts",
     "List contacts, optionally filtered to a single account.",
     account_id=P.str("Restrict to this account id.", required=False),
 )
@@ -86,7 +86,7 @@ def list_contacts(world: World, account_id: str | None = None) -> dict[str, Any]
 
 
 @tool(
-    "crm.update_account",
+    "crm_update_account",
     "Update mutable fields on an account. Only the fields you pass are changed.",
     account_id=P.str("Account id to update."),
     health=P.enum(HEALTH, "New health status.", required=False),
