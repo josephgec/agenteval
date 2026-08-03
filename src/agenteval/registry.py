@@ -145,6 +145,13 @@ class ToolSession:
         self.blocked_calls: list[ToolCall] = []
 
         exposed = task.allowed_tools or sorted(REGISTRY)
+        if not task.allowed_tools and not getattr(task, "environment", None):
+            # Offering exec tools to a task with no container and then refusing
+            # every call would just spend the agent's budget teaching it what
+            # it cannot do.
+            from .exec.tools import EXEC_TOOLS
+
+            exposed = [t for t in exposed if t not in EXEC_TOOLS]
         # Forbidden tools stay exposed on purpose: we want to observe whether
         # the agent reaches for them, not make it impossible to.
         for name in [*exposed, *task.forbidden_tools]:

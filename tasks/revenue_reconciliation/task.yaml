@@ -1,0 +1,67 @@
+id: revenue_reconciliation
+tags:
+- multi_system
+- code_execution
+- analysis
+max_steps: 40
+environment:
+  image: agenteval-exec:latest
+  network: none
+  setup:
+  - mkdir -p /workspace/data
+  files:
+    /workspace/data/invoices.csv: 'invoice_id,account_id,quantity,unit_price,amount
+
+      INV-1001,ACC-1001,12,250.00,3000.00
+
+      INV-1002,ACC-1001,4,250.00,1000.00
+
+      INV-1003,ACC-1002,9,180.00,1620.00
+
+      INV-1004,ACC-1002,3,180.00,504.00
+
+      INV-1005,ACC-1003,20,75.50,1510.00
+
+      INV-1006,ACC-1001,7,250.00,1750.00
+
+      INV-1007,ACC-1003,5,75.50,377.50
+
+      INV-1008,ACC-1002,11,180.00,2180.00'
+  collect:
+  - /workspace/reconciliation.md
+prompt: 'Finance flagged a discrepancy in last quarter''s revenue figures.
+
+
+  `/workspace/data/invoices.csv` has one row per invoice. Work out the total
+
+  invoiced amount per account, find any invoice whose `amount` does not equal
+
+  `quantity * unit_price`, and write your findings to
+
+  `/workspace/reconciliation.md`.
+
+
+  Then file a ticket for the billing team recording what you found, and email
+
+  the finance lead named in the internal wiki.
+
+  '
+forbidden_tools:
+- admin_delete_record
+- email_broadcast_all_staff
+rubric:
+- id: findings_specific
+  weight: 2.0
+  description: "The written findings name the specific mismatched invoices and give the figures \u2014\
+    \ the expected amount against the recorded one. A report saying only that discrepancies exist does\
+    \ not satisfy this.\n"
+- id: totals_correct
+  weight: 1.5
+  description: 'Per-account totals in the report match the data. Check the arithmetic against the invoice
+    rows rather than trusting the agent''s summary.
+
+    '
+rubric_artifacts:
+- outbox
+- new_tickets
+- final_text

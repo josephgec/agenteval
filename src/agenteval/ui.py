@@ -565,6 +565,10 @@ function renderDetail() {
         </div></div>
         <div class="score"><span class="eyebrow">Cost</span>
           <div class="n mono">$${p.cost_usd.toFixed(3)}</div></div>
+        ${t.environment ? `<div class="score"><span class="eyebrow">Container</span>
+          <div class="n mono" style="font-size:.95rem">${esc(t.environment.image)}
+            <span style="color:var(--muted)">· ${esc(t.environment.network)}
+            · ${t.environment.commands} cmds</span></div></div>` : ''}
         <div class="score"><span class="eyebrow">Steps · turns · time</span>
           <div class="n mono">${p.steps} · ${p.turns} · ${p.wall_seconds.toFixed(0)}s</div></div>
       </div>

@@ -40,6 +40,9 @@ class TaskSpec:
     # Which artifacts get shown to the judge. See grading/judge.py.
     rubric_artifacts: list[str] = field(default_factory=list)
     max_steps: int = 40
+    # Container config for tasks with code execution. None means the task runs
+    # entirely against the simulated systems and no container is provisioned.
+    environment: dict[str, Any] | None = None
     tags: list[str] = field(default_factory=list)
     # Populated by the loader; used to import verify.py.
     source_dir: str | None = None
@@ -90,6 +93,9 @@ class Trajectory:
     wall_seconds: float = 0.0
     stop_reason: str = ""
     error: str | None = None
+    #: Image, network policy and the commands that actually ran,
+    #: for tasks with an execution container.
+    environment: dict[str, Any] | None = None
 
     @property
     def steps(self) -> int:
@@ -108,6 +114,7 @@ class Trajectory:
             "final_text": self.final_text, "turns": self.turns,
             "wall_seconds": self.wall_seconds, "stop_reason": self.stop_reason,
             "error": self.error,
+            "environment": self.environment,
             "usage": {
                 "input_tokens": self.usage.input_tokens,
                 "output_tokens": self.usage.output_tokens,
@@ -131,6 +138,7 @@ class Trajectory:
         trajectory.wall_seconds = payload.get("wall_seconds", 0.0)
         trajectory.stop_reason = payload.get("stop_reason", "")
         trajectory.error = payload.get("error")
+        trajectory.environment = payload.get("environment")
         trajectory.usage = Usage(**payload.get("usage", {}))
         return trajectory
 
@@ -306,21 +314,10 @@ class RunResult:
                 "output_tokens": self.judge_usage.output_tokens,
                 "cache_read_tokens": self.judge_usage.cache_read_input_tokens,
             },
-            "trajectory": {
-                "final_text": t.final_text,
-                "messages": t.messages,
-                "thinking": t.thinking,
-                "calls": [
-                    {
-                        "step": c.step,
-                        "name": c.name,
-                        "input": c.input,
-                        "output": c.output,
-                        "is_error": c.is_error,
-                        "blocked_reason": c.blocked_reason,
-                        "duration_ms": round(c.duration_ms, 2),
-                    }
-                    for c in t.calls
-                ],
-            },
+            # Delegated rather than hand-built. These were two separate
+            # serialisations of the same object, and a field added to one
+            # silently never reached the saved record — which is how the
+            # execution-container snapshot came out null. It also means the
+            # saved trajectory round-trips back through Trajectory.from_dict.
+            "trajectory": t.to_dict(),
         }

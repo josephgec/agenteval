@@ -76,6 +76,7 @@ class LoadedTask:
             "system": spec.system,
             "tags": spec.tags,
             "max_steps": spec.max_steps,
+            "environment": spec.environment,
             "allowed_tools": spec.allowed_tools,
             "forbidden_tools": spec.forbidden_tools,
             "rubric": [
@@ -145,6 +146,7 @@ def load_task(directory: Path, sandbox: "Any | None" = None) -> LoadedTask:
         rubric=rubric,
         rubric_artifacts=config.get("rubric_artifacts", []) or [],
         max_steps=int(config.get("max_steps", 40)),
+        environment=config.get("environment") or None,
         tags=config.get("tags", []) or [],
         source_dir=str(directory),
     )

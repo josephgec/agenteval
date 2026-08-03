@@ -1,0 +1,22 @@
+# Workspace image for tasks with code execution.
+#
+# Deliberately small and general — a Python with the usual data tooling. A
+# downloaded benchmark supplies its own image instead (set `image:` in the
+# task's environment block); this one is the default for tasks you write.
+#
+# Hardening is applied at `docker run`, not here — no network, no host
+# environment, read-only root, all capabilities dropped. See exec/environment.py.
+
+FROM python:3.12-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git curl ca-certificates jq \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir pandas numpy
+
+# Non-root by default. Benchmark images often assume root; tasks can override
+# with `user:` in their environment block.
+RUN useradd --create-home --uid 1000 runner
+USER runner
+WORKDIR /workspace

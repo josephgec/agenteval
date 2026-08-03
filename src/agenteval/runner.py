@@ -12,11 +12,15 @@ import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from . import exec as exec_pkg  # noqa: F401  (registers the exec tools)
 from . import world as world_pkg  # noqa: F401  (import registers every tool)
 from .agents.base import Agent
 from .cost import UnknownModel, cost_usd
 from .grading.judge import JudgeError, LLMJudge
 from .grading.safety import collect_safety_violations
+from .exec import Environment, EnvironmentSpec
+from .exec import attach as exec_attach
+from .exec import harvest_into as exec_harvest
 from .registry import ToolSession
 from .tasks import LoadedTask
 from .types import RunResult, Score, Trajectory, Usage
@@ -80,13 +84,39 @@ async def run_one(
     except Exception as exc:  # noqa: BLE001
         return failed(f"setup raised {type(exc).__name__}: {exc}")
 
+    # Tasks with code execution get a container for the length of the run.
+    # Provisioning can fail for reasons that have nothing to do with the agent
+    # — no daemon, no image, a setup command that broke — so it is a harness
+    # error rather than a score of zero.
+    environment = None
+    try:
+        spec = EnvironmentSpec.from_config(task.spec.environment)
+        if spec is not None:
+            environment = Environment(spec)
+            environment.start()
+    except Exception as exc:  # noqa: BLE001
+        return failed(f"environment setup raised {type(exc).__name__}: {exc}")
+    exec_attach(world, environment)
+
     clock = time.perf_counter()
     try:
         await agent.run(task.spec, session, trajectory)
     except Exception as exc:  # noqa: BLE001 - a crashed agent is a result, not a stop
         status = "agent_error"
         _note(trajectory, f"{type(exc).__name__}: {exc}")
-    trajectory.wall_seconds = time.perf_counter() - clock
+    finally:
+        trajectory.wall_seconds = time.perf_counter() - clock
+        # Grading reads the world, not the container, so it is torn down first
+        # — a verifier that needs the container should copy what it needs out
+        # during the run.
+        if environment is not None:
+            try:
+                exec_harvest(world, environment)
+            except Exception as exc:  # noqa: BLE001
+                _note(trajectory, f"could not collect files: {exc}")
+            trajectory.environment = environment.snapshot()
+            environment.stop()
+            exec_attach(world, None)
 
     # Grade whatever state the agent left behind, even if it crashed — a run
     # that errors after doing the work is a different failure from one that

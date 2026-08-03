@@ -515,3 +515,24 @@ def test_a_report_without_task_definitions_still_renders(tmp_path):
         page.read_text().split('id="payload">')[1].split("</script>")[0]
     )
     assert payload["tasks"] == {}
+
+
+def test_the_saved_trajectory_round_trips(tmp_path):
+    """There used to be two serialisations of a Trajectory — this one and
+    `Trajectory.to_dict` — and a field added to one never reached the other.
+    Asserting a round-trip makes any future divergence a test failure."""
+    result = make_result("t", steps=2)
+    result.trajectory.thinking = ["considered it"]
+    result.trajectory.environment = {"image": "agenteval-exec:latest",
+                                     "network": "none", "commands": 3}
+    result.trajectory.usage = Usage(input_tokens=11, output_tokens=7)
+    result.trajectory.stop_reason = "end_turn"
+
+    restored = Trajectory.from_dict(result.to_dict()["trajectory"])
+
+    assert restored.environment == result.trajectory.environment
+    assert restored.thinking == ["considered it"]
+    assert restored.usage.input_tokens == 11
+    assert restored.stop_reason == "end_turn"
+    assert [c.name for c in restored.calls] == \
+           [c.name for c in result.trajectory.calls]

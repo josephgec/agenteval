@@ -1,0 +1,16 @@
+{
+  "today": "2026-08-02",
+  "employees": [
+    {"id": "EMP-002", "name": "Nadia Bergstrom", "email": "nadia.bergstrom@northwind.example", "title": "Chief Technology Officer", "department": "Executive", "manager_id": null},
+    {"id": "EMP-055", "name": "Halima Ozturk", "email": "halima.ozturk@northwind.example", "title": "Finance Lead", "department": "Finance", "manager_id": "EMP-002"}
+  ],
+  "documents": [
+    {
+      "id": "wiki/finance-contacts",
+      "title": "Finance — who to contact",
+      "content": "## Escalation\nRevenue and invoicing discrepancies go to the Finance Lead, **Halima Ozturk** (halima.ozturk@northwind.example).\n\nDo not send reconciliation findings to the all-staff list; figures are confidential until the quarter closes.",
+      "updated_at": "2026-05-02"
+    }
+  ],
+  "accounts": [], "contacts": [], "tickets": [], "inbox": [], "outbox": [], "expenses": []
+}

@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 462 tests; Docker tests skip if no image is built
+pytest              # 500 tests; Docker tests skip if no image is built
 pytest --cov        # gated at 98%
 ```
 
@@ -103,6 +103,51 @@ and expensive to notice:
 - **The HTML report escapes everything interpolated into it.** The judge is
   instructed to quote spans from the artifacts, so its reasoning carries
   agent-authored text into a page meant to be shared.
+
+## Code execution
+
+Tasks can declare a container, and tool calls execute inside it:
+
+```yaml
+environment:
+  image: agenteval-exec:latest    # a benchmark supplies its own here
+  network: none
+  files:   {"/workspace/data/invoices.csv": "…"}   # seeded before the run
+  setup:   ["pip install -r requirements.txt"]
+  collect: ["/workspace/reconciliation.md"]        # harvested before teardown
+```
+
+```bash
+docker build -t agenteval-exec:latest -f Dockerfile.exec .
+agenteval run --gold --task revenue_reconciliation
+```
+
+**The agent and `ToolSession` stay on the host; only execution moves into the
+container.** Three consequences, each a decision that would be expensive to
+reverse:
+
+- **The audit trail stays trustworthy.** The session observes from outside, so
+  "reached for a forbidden tool" is a claim harness code makes, not one the
+  sandboxed side makes about itself. Move the session inside and the safety
+  signal becomes self-attested.
+- **The credential never enters the container.** The model API is called from
+  the host, so no egress proxy is needed until the agent itself moves inside.
+- **One container per run, not per call.** A benchmark instance is a session
+  with state — a repo, a virtualenv, files written three steps ago.
+
+`exec_bash`, `exec_write_file`, `exec_read_file` and `exec_list_files` are
+registered like any other tool, so they inherit the audit trail, the step
+budget and forbidden-tool blocking. A task mixes them freely with the simulated
+systems — `revenue_reconciliation` analyses a CSV with pandas, then files a
+ticket and emails a colleague.
+
+The container is torn down before grading, so anything a verifier needs must be
+named in `collect`. Harvested files land in the world as documents, which means
+the existing artifact selectors, verifier helpers and report panels reach them
+unchanged.
+
+**The image is the seam.** Pointing `image:` at a downloaded benchmark's own
+container is what keeps adding one from being a rewrite.
 
 ## Running task code in a container
 
