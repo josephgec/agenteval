@@ -13,9 +13,11 @@ from .environment import (
     available,
     image_present,
 )
+from .proxy import Proxy, ProxyError
 from .tools import EXEC_TOOLS, attach, harvest_into, snapshot
 
 __all__ = [
     "Environment", "EnvironmentSpec", "ExecResult", "DEFAULT_IMAGE",
+    "Proxy", "ProxyError",
     "EXEC_TOOLS", "attach", "harvest_into", "snapshot", "available", "image_present",
 ]

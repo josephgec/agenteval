@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 551 tests; Docker tests skip if no image is built
+pytest              # 601 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -148,6 +148,52 @@ unchanged.
 
 **The image is the seam.** Pointing `image:` at a downloaded benchmark's own
 container is what keeps adding one from being a rewrite.
+
+## Monitored egress
+
+Some benchmarks genuinely need the network — `pip install -r requirements.txt`,
+`git clone`, a dataset fetch. Handing the workspace `--network bridge` gives it
+that and everything else, unlogged. So a task names the hosts it needs:
+
+```yaml
+environment:
+  allow_hosts: [pypi.org, files.pythonhosted.org]
+```
+
+**The enforcement is the topology, not the environment variables.** The
+workspace joins a Docker network created `--internal`, which has no route off
+the host at all. The only other thing on that network is a gateway container,
+which is also attached to an ordinary network and is therefore the single path
+out. `HTTP_PROXY` is set as a convenience so well-behaved clients use it
+without being told; a program that ignores it does not thereby escape.
+
+Four things have to be true, and each is a test:
+
+| | |
+|---|---|
+| An allowed host is reachable | `curl https://example.com/` → 200 |
+| A host that was not named is refused | 403 at the gateway, logged |
+| Unsetting `HTTPS_PROXY` does not get you out | connection fails |
+| A raw socket has nowhere to go | `Network is unreachable` |
+
+A useful consequence: the workspace has no working DNS. Clients hand the *name*
+to the proxy and the proxy resolves it, so name resolution is one more thing
+the sandboxed side cannot do for itself.
+
+Every request lands in the results and on the report — hosts reached, hosts
+refused, byte volumes — because an egress log nobody reads is not monitoring.
+`allow_hosts` beside `network: bridge` is rejected rather than merged: an
+allowlist next to something that already grants unfiltered egress is not a
+stricter policy, it is a misleading one.
+
+**What this does not do is intercept TLS.** For an HTTPS request it sees the
+host from the CONNECT line and the byte counts, not the path or the body.
+Reading inside TLS would mean installing a CA the container trusts, and a
+harness that can decrypt the traffic of the code it is evaluating is a larger
+security surface than the one it closes. One consequence to know when writing a
+task: a blocked HTTPS request reaches the agent as `CONNECT tunnel failed,
+response 403` with no explanation attached, so a task that restricts egress
+should say so in its prompt. Over plain HTTP the reason does get through.
 
 ## Running task code in a container
 

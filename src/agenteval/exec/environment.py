@@ -11,8 +11,9 @@ harness code rather than one the sandboxed side reports about itself. Move the
 session inside and the safety signal becomes self-attested.
 
 *The credential never enters the container.* The model API is called from the
-host, so nothing in the sandbox can read a key, and no egress proxy is needed
-until the agent itself moves inside.
+host, so nothing in the sandbox can read a key. The gateway in `proxy.py`
+exists for the opposite direction — benchmarks that need to fetch things —
+rather than to keep a key away from the agent.
 
 *One container per run, not per call.* `docker run` costs a few hundred
 milliseconds; `docker exec` costs a few. A benchmark instance is a session with
@@ -32,6 +33,8 @@ import subprocess
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+
+from .proxy import Proxy
 
 DEFAULT_IMAGE = "agenteval-exec:latest"
 
@@ -78,6 +81,10 @@ class EnvironmentSpec:
     #: "none" by default. A benchmark that genuinely needs egress opts in, and
     #: that choice then shows up in the task definition where it is reviewable.
     network: str = "none"
+    #: Hosts the workspace may reach, through a logging gateway. Naming any of
+    #: them replaces `network` with an internal network whose only exit is that
+    #: gateway — see proxy.py. Empty keeps whatever `network` says.
+    allow_hosts: list[str] = field(default_factory=list)
     memory: str = "1g"
     cpus: str = "2.0"
     workdir: str = "/workspace"
@@ -113,7 +120,17 @@ class EnvironmentSpec:
                 f"unknown environment settings {sorted(unknown)}; "
                 f"accepted: {sorted(known)}"
             )
-        return cls(**config)
+        spec = cls(**config)
+        if spec.allow_hosts and config.get("network") not in (None, "none"):
+            # An allowlist beside a network that already grants unfiltered
+            # egress is not a stricter policy, it is a misleading one. Anyone
+            # reading the task would take the list for the boundary.
+            raise EnvironmentError_(
+                f"allow_hosts cannot be combined with network: {spec.network!r}, "
+                "which already grants unrestricted egress. Remove `network` and "
+                "the allowlist becomes the boundary."
+            )
+        return spec
 
 
 class Environment:
@@ -123,6 +140,10 @@ class Environment:
         self.spec = spec
         self.docker = docker
         self.container: str | None = None
+        #: The egress gateway, for tasks that named hosts. None otherwise.
+        self.proxy: Proxy | None = None
+        #: Kept across teardown so the record survives the gateway it came from.
+        self._egress: dict[str, Any] | None = None
         #: Every command run, for the record. The trajectory logs tool calls;
         #: this logs what actually executed, including setup the agent never saw.
         self.log: list[dict[str, Any]] = []
@@ -133,7 +154,10 @@ class Environment:
         name = f"agenteval-{uuid.uuid4().hex[:12]}"
         args = [
             self.docker, "run", "--detach", "--name", name,
-            "--network", self.spec.network,
+            # With a gateway this is the internal network, which has no route
+            # off the host. The allowlist is enforced by there being nowhere
+            # else to go, not by the variables set below.
+            "--network", self.proxy.network if self.proxy else self.spec.network,
             # No host environment crosses in, so a credential on this machine
             # is not reachable from code the agent generates.
             "--env-file", "/dev/null",
@@ -157,6 +181,9 @@ class Environment:
                 f"{self.spec.workdir}:rw,exec,mode=1777,size={self.spec.workspace_mb}m",
                 "--tmpfs", "/tmp:rw,exec,mode=1777,size=256m",
             ]
+        if self.proxy:
+            for variable in self.proxy.environment_variables():
+                args += ["--env", variable]
         if self.spec.user:
             args += ["--user", self.spec.user]
         # Held open so exec has something to attach to; the container does no
@@ -167,6 +194,14 @@ class Environment:
     def start(self) -> None:
         if self.container:
             return
+        if self.spec.allow_hosts:
+            # Before the workspace, so the network exists to attach it to and
+            # the gateway is already answering when the first request lands.
+            self.proxy = Proxy(
+                self.spec.allow_hosts, image=self.spec.image,
+                docker=self.docker, lifetime=self.spec.lifetime,
+            )
+            self.proxy.start()
         done = subprocess.run(self._run_args(), capture_output=True, text=True)
         if done.returncode != 0:
             raise EnvironmentError_(
@@ -192,13 +227,19 @@ class Environment:
                 )
 
     def stop(self) -> None:
-        if not self.container:
-            return
-        subprocess.run(
-            [self.docker, "rm", "--force", self.container],
-            capture_output=True, text=True,
-        )
-        self.container = None
+        # The gateway goes second: the network cannot be removed while the
+        # workspace is still attached to it, and `snapshot()` may have been
+        # called just before this.
+        if self.container:
+            subprocess.run(
+                [self.docker, "rm", "--force", self.container],
+                capture_output=True, text=True,
+            )
+            self.container = None
+        if self.proxy:
+            self._egress = self.proxy.snapshot()
+            self.proxy.stop()
+            self.proxy = None
 
     def __enter__(self) -> Environment:
         self.start()
@@ -273,11 +314,16 @@ class Environment:
 
     def snapshot(self) -> dict[str, Any]:
         """What ran, for the result record."""
+        egress = self.proxy.snapshot() if self.proxy else self._egress
         return {
             "image": self.spec.image,
-            "network": self.spec.network,
+            # What the workspace actually had, which for a proxied task is not
+            # what `network:` said — reporting "none" there would be a lie in
+            # the one direction that matters.
+            "network": "proxy" if self.spec.allow_hosts else self.spec.network,
             "commands": len([e for e in self.log if e["phase"] == "exec"]),
             "log": self.log,
+            "egress": egress,
         }
 
 
@@ -301,6 +347,10 @@ def image_present(image: str, docker: str = "docker") -> bool:
 
 def describe(spec: EnvironmentSpec) -> str:
     return json.dumps(
-        {"image": spec.image, "network": spec.network, "memory": spec.memory},
+        {
+            "image": spec.image,
+            "network": "proxy" if spec.allow_hosts else spec.network,
+            "memory": spec.memory,
+        },
         sort_keys=True,
     )

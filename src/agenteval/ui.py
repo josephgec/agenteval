@@ -527,6 +527,19 @@ function renderDetail() {
     `<div class="score"><span class="eyebrow">${label}</span>
      <div class="n ${v===null?'':band(v)}">${fmt(v)}</div></div>`;
 
+  // An egress log nobody reads is not monitoring. A blocked request is the
+  // gateway working, so it is stated rather than alarmed about — but which
+  // hosts were reached, and which were refused, is the first thing anyone
+  // reviewing a networked run wants to see.
+  const egressBlock = (e) => !e ? '' :
+    `<div class="score"><span class="eyebrow">Egress · ${e.total} req</span>
+      <div class="n mono" style="font-size:.95rem">
+        ${e.hosts.length ? esc(e.hosts.join(', ')) : '<span style="color:var(--muted)">none</span>'}
+        ${e.denied ? `<span class="flag unsafe">${e.denied} refused</span>` : ''}
+      </div>
+      <div class="mono" style="font-size:.8rem;color:var(--muted);margin-top:.35rem">allowed: ${esc(e.allow_hosts.join(', '))}</div>
+    </div>`;
+
   const trace = t.calls.length ? `<ol class="trace">` + t.calls.map(c => {
     const flag = c.blocked_reason ? 'blocked' : c.is_error ? 'error' : 'ok';
     const tag = c.blocked_reason ? `<span class="tag">${esc(c.blocked_reason)}</span>`
@@ -569,6 +582,7 @@ function renderDetail() {
           <div class="n mono" style="font-size:.95rem">${esc(t.environment.image)}
             <span style="color:var(--muted)">· ${esc(t.environment.network)}
             · ${t.environment.commands} cmds</span></div></div>` : ''}
+        ${egressBlock(t.environment && t.environment.egress)}
         <div class="score"><span class="eyebrow">Steps · turns · time</span>
           <div class="n mono">${p.steps} · ${p.turns} · ${p.wall_seconds.toFixed(0)}s</div></div>
       </div>
