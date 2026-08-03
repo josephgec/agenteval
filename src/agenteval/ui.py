@@ -258,6 +258,71 @@ COMPONENTS = """\
   font-family:var(--body); color:var(--ink); max-height:22rem; overflow:auto;
 }
 .empty { color:var(--muted); font-size:13.5px; font-style:italic; }
+
+/* ---- task definition -------------------------------------------------- */
+/* Material the agent was *given* is flat and left-ruled; material it produced
+   is a raised card. Elevation means authorship, which is the distinction that
+   decides whether a failure belongs to the agent or to the task. */
+.switch { display:flex; gap:.25rem; margin:1rem 0 0; }
+.switch button {
+  font:inherit; font-family:var(--display); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; font-weight:600; padding:.35rem .75rem;
+  border:1px solid var(--rule); background:transparent; color:var(--muted);
+  border-radius:5px; cursor:pointer;
+}
+.switch button[aria-pressed="true"] {
+  background:var(--ink); color:var(--paper); border-color:var(--ink);
+}
+.brief {
+  border-left:2px solid var(--accent); padding:.15rem 0 .15rem 1rem; margin:0;
+  white-space:pre-wrap; font-size:14.5px; line-height:1.6;
+}
+.given { border-left:2px solid var(--rule); padding:.2rem 0 .2rem 1rem;
+  margin-bottom:1.1rem; }
+.given .kind { display:flex; gap:.5rem; align-items:baseline; margin-bottom:.3rem; }
+.given .to { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+.given h4 { margin:0 0 .3rem; font-size:14px; font-weight:600; }
+.given .doc {
+  white-space:pre-wrap; font-size:13px; line-height:1.6; margin:0;
+  color:var(--muted); max-height:15rem; overflow:auto;
+}
+.chips { display:flex; flex-wrap:wrap; gap:.35rem; }
+.chip {
+  font-family:var(--mono); font-size:11px; padding:.2rem .5rem;
+  border:1px solid var(--rule); border-radius:4px; color:var(--muted);
+}
+.chip.deny {
+  color:var(--fail);
+  border-color:color-mix(in srgb, var(--fail) 35%, transparent);
+}
+.tablewrap { overflow-x:auto; }
+.records { border-collapse:collapse; font-family:var(--mono); font-size:11.5px; }
+.records th {
+  text-align:left; font-family:var(--display); font-size:9px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+  padding:.3rem 1rem .3rem 0; border-bottom:1px solid var(--rule);
+  white-space:nowrap;
+}
+.records td {
+  padding:.3rem 1rem .3rem 0; border-bottom:1px solid var(--rule-soft);
+  vertical-align:top; max-width:26rem;
+}
+/* Seeded records carry the material a task turns on — an injected note in an
+   expense, the body of a ticket. Clamped so the table stays a table, but the
+   whole value is present and a click opens the row: truncating it away would
+   hide the very thing a reviewer opened this view to read. */
+.records tr[data-row] { cursor:pointer; }
+.records tr[data-row]:hover td { background:var(--rule-soft); }
+.records td > span {
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; white-space:pre-wrap;
+}
+.records tr.open td > span { -webkit-line-clamp:unset; display:block; }
+.source pre {
+  font-family:var(--mono); font-size:11.5px; line-height:1.55; margin:0;
+  background:var(--card); border:1px solid var(--rule); border-radius:8px;
+  padding:.9rem 1rem; overflow:auto; max-height:32rem;
+}
 """
 
 #: Focus ring and motion preference — part of the quality floor, not the look.
@@ -324,7 +389,102 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
 const clip = (s, n) => { s = typeof s === 'string' ? s : JSON.stringify(s);
   s = (s ?? '').replace(/\\s+/g,' '); return s.length > n ? s.slice(0,n)+'…' : s; };
 
+const TASKS = DATA.tasks || {};
+
 let selected = 0;
+let view = 'run';
+
+/* --- the eval's own inputs ------------------------------------------- */
+/* Collections render in the order a reviewer reads them: the policies and mail
+   the agent was meant to act on first, then the records it acts against. */
+const WORLD_ORDER = ['documents', 'inbox', 'expenses', 'tickets', 'accounts',
+                     'contacts', 'employees', 'outbox'];
+
+const given = (kind, meta, title, body) => `<div class="given">
+  <div class="kind"><span class="eyebrow">${esc(kind)}</span>
+    <span class="to">${esc(meta)}</span></div>
+  ${title ? `<h4>${esc(title)}</h4>` : ''}
+  <p class="doc">${esc(body)}</p></div>`;
+
+function table(rows) {
+  const cols = [...new Set(rows.flatMap(r => Object.keys(r)))];
+  // Whole value, clamped by CSS rather than cut here — clipping in the markup
+  // would destroy exactly the content a reviewer came to read.
+  const cell = v => esc(
+    v === null || v === undefined ? ''
+    : typeof v === 'string' ? v : JSON.stringify(v));
+  return `<div class="tablewrap"><table class="records">
+    <tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>
+    ${rows.map(r => `<tr data-row>${cols.map(c =>
+        `<td><span>${cell(r[c])}</span></td>`).join('')}</tr>`).join('')}
+  </table></div>`;
+}
+
+const block = (label, inner) =>
+  `<section class="section"><span class="eyebrow">${esc(label)}</span>${inner}</section>`;
+
+function renderWorld(seed) {
+  const out = [];
+  for (const key of WORLD_ORDER) {
+    const rows = seed[key];
+    if (!Array.isArray(rows) || !rows.length) continue;
+    if (key === 'documents') {
+      out.push(block('Wiki documents', rows.map(d =>
+        given('Document', d.id, d.title, d.content)).join('')));
+    } else if (key === 'inbox') {
+      out.push(block('Inbox', rows.map(m =>
+        given('Email', `from ${m.from}`, m.subject, m.body)).join('')));
+    } else {
+      out.push(block(key, table(rows)));
+    }
+  }
+  return out.join('') ||
+    '<p class="empty">This task starts from an empty world.</p>';
+}
+
+function renderTask(taskId) {
+  const t = TASKS[taskId];
+  if (!t) return `<p class="empty">This result set predates task definitions
+    being saved. Re-run, or rebuild with <span class="mono">agenteval ui</span>
+    against a newer results.json.</p>`;
+
+  const tools = [
+    ...(t.allowed_tools.length
+        ? t.allowed_tools.map(x => `<span class="chip">${esc(x)}</span>`)
+        : ['<span class="chip">every registered tool</span>']),
+    ...t.forbidden_tools.map(x =>
+      `<span class="chip deny">${esc(x)} · forbidden</span>`),
+  ].join('');
+
+  const rubric = t.rubric.length ? `<ul class="checks">` + t.rubric.map(c =>
+    `<li><span class="mark">${c.weight}</span><span>${esc(c.id)}
+     <span class="why">— ${esc(c.description)}</span></span></li>`).join('')
+    + `</ul><p class="spec-note" style="color:var(--muted);font-size:12px">
+       Judged against: ${t.rubric_artifacts.map(a =>
+         `<span class="mono">${esc(a)}</span>`).join(', ')}</p>`
+    : '<p class="empty">No rubric — this task is graded on state assertions alone.</p>';
+
+  const files = Object.entries(t.files || {});
+  const source = files.length ? `<div class="switch" id="filetabs">` +
+    files.map(([name], i) =>
+      `<button data-file="${esc(name)}" aria-pressed="${i === 0}">${esc(name)}</button>`
+    ).join('') + `</div><div class="source" id="filebody">
+      <pre>${esc(files[0][1])}</pre></div>`
+    : '<p class="empty">No source files recorded.</p>';
+
+  return `
+    ${block('Prompt', `<p class="brief">${esc(t.prompt)}</p>`)}
+    ${t.system ? block('System prompt override',
+        `<p class="brief">${esc(t.system)}</p>`) : ''}
+    ${block('Tools and limits', `<div class="chips">${tools}</div>
+      <p class="spec-note" style="color:var(--muted);font-size:12px">
+        Step budget ${t.max_steps}. Forbidden tools stay visible to the agent —
+        a call is blocked and recorded as a safety violation, so reaching for
+        one is measurable.</p>`)}
+    ${block('Rubric', rubric)}
+    ${renderWorld(t.seed || {})}
+    ${block('Source files', source)}`;
+}
 
 /* --- index ---------------------------------------------------------- */
 function visible() {
@@ -412,7 +572,12 @@ function renderDetail() {
       ${siblings.length > 1 ? `<div class="repeats">` + siblings.map(({i},k) =>
         `<button data-i="${i}" aria-pressed="${i===selected}">run ${k+1}</button>`
       ).join('') + `</div>` : ''}
+      <div class="switch" id="views">
+        <button data-view="run" aria-pressed="${view==='run'}">What it did</button>
+        <button data-view="task" aria-pressed="${view==='task'}">What it was given</button>
+      </div>
     </div>
+    ${view === 'task' ? renderTask(r.task_id) : `
 
     ${s.safety_violations.length ? `<section class="section">
       <span class="eyebrow">Safety violations</span>
@@ -433,7 +598,7 @@ function renderDetail() {
 
     <section class="section"><span class="eyebrow">Artifacts produced</span>
       ${artifacts || '<p class="empty">The agent produced no documents, mail or tickets.</p>'}
-    </section>`;
+    </section>`}`;
 }
 
 /* --- wiring --------------------------------------------------------- */
@@ -445,6 +610,19 @@ document.getElementById('index').addEventListener('click', e => {
   const b = e.target.closest('.entry'); if (b) select(+b.dataset.i);
 });
 document.getElementById('detail').addEventListener('click', e => {
+  const v = e.target.closest('#views button');
+  if (v) { view = v.dataset.view; renderDetail(); return; }
+  const f = e.target.closest('#filetabs button');
+  if (f) {
+    const task = TASKS[RESULTS[selected].task_id];
+    document.querySelectorAll('#filetabs button').forEach(b =>
+      b.setAttribute('aria-pressed', b === f));
+    document.getElementById('filebody').innerHTML =
+      `<pre>${esc(task.files[f.dataset.file])}</pre>`;
+    return;
+  }
+  const row = e.target.closest('.records tr[data-row]');
+  if (row) { row.classList.toggle('open'); return; }
   const r = e.target.closest('.repeats button'); if (r) { select(+r.dataset.i); return; }
   const s = e.target.closest('.step'); if (s) s.classList.toggle('open');
 });

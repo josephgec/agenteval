@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 416 tests, ~3s, no network
+pytest              # 423 tests, ~3s, no network
 pytest --cov        # gated at 98%
 ```
 
@@ -227,6 +227,17 @@ agent went wrong.
   blocked and errored calls swell into filled squares that break it. You scan a
   20-step run for deviations instead of reading it. Click any step for its full
   arguments and output.
+- **Both halves of the eval are there.** *What it did* is the trace, the
+  verdict and the artifacts. *What it was given* is the prompt, the tools and
+  limits, the rubric with its weights, the world it woke up in — policies and
+  mail rendered as documents, records as tables — and the raw `task.yaml`,
+  `seed.json` and `verify.py`. You cannot tell whether a failure belongs to the
+  agent or to the task without seeing both, and only one of them used to be in
+  the report.
+- **Given material is flat; produced material is a raised card.** Elevation
+  means the agent authored it. Click any seeded record to expand it — the
+  injected note in `EXP-502` is the content those tasks turn on, so clamping it
+  away would hide the thing you opened the view to read.
 - **Artifacts are rendered as what they are.** Emails the agent sent, documents
   it wrote, tickets it filed — reconstructed from the call log and shown as
   prose. That material is exactly what the rubric graded, and it otherwise

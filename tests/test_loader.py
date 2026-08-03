@@ -216,3 +216,48 @@ def test_two_tasks_with_verify_modules_do_not_collide(tmp_path):
     assert sys.modules["agenteval_task_first"].MARKER == "first"
     assert sys.modules["agenteval_task_second"].MARKER == "second"
     assert first.verify is not second.verify
+
+
+# --------------------------------------------------------------------------- #
+# Manifest — the eval's own inputs, carried with its results
+# --------------------------------------------------------------------------- #
+
+
+def test_manifest_carries_the_definition_and_the_source_files(tmp_path):
+    """A result set recording only what the agent did is unreviewable: you
+    cannot tell whether a failure was the agent's or the task's without the
+    prompt, the seeded world, and the assertions that judged it."""
+    directory = write_task(tmp_path, seed='{"today": "2026-01-01"}')
+    m = load_task(directory).manifest()
+
+    assert m["id"] == "sample"
+    assert m["prompt"] == "Do the thing."
+    assert m["forbidden_tools"] == ["admin_delete_record"]
+    assert m["max_steps"] == 12
+    assert m["seed"] == {"today": "2026-01-01"}
+    assert m["rubric"] == [
+        {"id": "tone", "description": "Is it polite?", "weight": 2.0}
+    ]
+    assert m["rubric_artifacts"] == ["outbox"]
+    assert m["has_gold"] is True
+    assert set(m["files"]) == {"task.yaml", "seed.json", "verify.py"}
+    assert "def verify" in m["files"]["verify.py"]
+
+
+def test_manifest_survives_missing_optional_files(tmp_path):
+    directory = write_task(
+        tmp_path, task_yaml="prompt: p\n",
+        verify="def verify(w, t):\n    return []\n",
+    )
+    m = load_task(directory).manifest()
+    assert set(m["files"]) == {"task.yaml", "verify.py"}  # no seed.json
+    assert m["seed"] == {} and m["has_gold"] is False
+
+
+def test_every_shipped_task_manifests_its_own_files():
+    from agenteval.tasks import DEFAULT_TASK_ROOT, SOURCE_FILES, discover
+
+    for task in discover(DEFAULT_TASK_ROOT):
+        m = task.manifest()
+        assert set(m["files"]) == set(SOURCE_FILES), m["id"]
+        assert m["prompt"] and m["seed"], m["id"]

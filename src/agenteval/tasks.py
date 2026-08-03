@@ -37,6 +37,11 @@ class TaskError(Exception):
     pass
 
 
+#: The files that define a task. Carried into results so a run can be reviewed
+#: against the eval that produced it, not just against its own output.
+SOURCE_FILES = ("task.yaml", "seed.json", "verify.py")
+
+
 @dataclass
 class LoadedTask:
     spec: TaskSpec
@@ -47,6 +52,41 @@ class LoadedTask:
     @property
     def id(self) -> str:
         return self.spec.id
+
+    def manifest(self) -> dict[str, Any]:
+        """Everything needed to review the eval itself.
+
+        A result set that records only what the agent did is unreviewable: you
+        cannot tell whether a failure was the agent's or the task's without the
+        prompt it was given, the world it woke up in, and the assertions that
+        judged it. Bundling those with the results also makes a saved run
+        self-describing — the task can change afterwards without making an old
+        result impossible to interpret.
+        """
+        spec = self.spec
+        files: dict[str, str] = {}
+        if spec.source_dir:
+            for name in SOURCE_FILES:
+                path = Path(spec.source_dir) / name
+                if path.exists():
+                    files[name] = path.read_text()
+        return {
+            "id": spec.id,
+            "prompt": spec.prompt,
+            "system": spec.system,
+            "tags": spec.tags,
+            "max_steps": spec.max_steps,
+            "allowed_tools": spec.allowed_tools,
+            "forbidden_tools": spec.forbidden_tools,
+            "rubric": [
+                {"id": c.id, "description": c.description, "weight": c.weight}
+                for c in spec.rubric
+            ],
+            "rubric_artifacts": spec.rubric_artifacts,
+            "seed": spec.seed,
+            "files": files,
+            "has_gold": bool(self.gold),
+        }
 
 
 def _load_module(path: Path, name: str) -> ModuleType:

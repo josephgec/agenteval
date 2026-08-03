@@ -193,13 +193,22 @@ def _print_failures(results: list[RunResult], console: Console) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def build_payload(results: list[RunResult], meta: dict[str, Any]) -> dict[str, Any]:
+def build_payload(
+    results: list[RunResult],
+    meta: dict[str, Any],
+    tasks: "list[Any] | None" = None,
+) -> dict[str, Any]:
     """The saved shape, built once and shared by the JSON file and the report.
 
     Assembling it twice is how the two drift apart, and the HTML is generated
     from exactly what lands on disk.
+
+    `tasks` carries each task's definition — prompt, seeded world, rubric and
+    source files — so a saved result stays interpretable after the task changes
+    underneath it.
     """
     return {
+        "tasks": {t.id: t.manifest() for t in (tasks or [])},
         "meta": {
             **meta,
             "saved_at": datetime.now(timezone.utc).isoformat(),
@@ -217,11 +226,16 @@ def build_payload(results: list[RunResult], meta: dict[str, Any]) -> dict[str, A
     }
 
 
-def save(results: list[RunResult], out_dir: Path, meta: dict[str, Any]) -> Path:
+def save(
+    results: list[RunResult],
+    out_dir: Path,
+    meta: dict[str, Any],
+    tasks: "list[Any] | None" = None,
+) -> Path:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "results.json"
-    path.write_text(json.dumps(build_payload(results, meta), indent=2))
+    path.write_text(json.dumps(build_payload(results, meta, tasks), indent=2))
     return path
 
 
@@ -410,6 +424,11 @@ def print_comparison(
 # --------------------------------------------------------------------------- #
 
 
-def write_html(results: list[RunResult], out_dir: Path, meta: dict[str, Any]) -> Path:
+def write_html(
+    results: list[RunResult],
+    out_dir: Path,
+    meta: dict[str, Any],
+    tasks: "list[Any] | None" = None,
+) -> Path:
     """Write the standalone run explorer. See `agenteval.ui` for the design."""
-    return ui.write(build_payload(results, meta), out_dir)
+    return ui.write(build_payload(results, meta, tasks), out_dir)

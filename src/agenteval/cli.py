@@ -211,8 +211,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         "tasks": [t.id for t in tasks],
         "weights": {"state": config.w_state, "rubric": config.w_rubric},
     }
-    json_path = report_mod.save(results, out_dir, meta)
-    html_path = report_mod.write_html(results, out_dir, meta)
+    json_path = report_mod.save(results, out_dir, meta, tasks)
+    html_path = report_mod.write_html(results, out_dir, meta, tasks)
 
     report_mod.print_results(results, console)
     console.print(f"[dim]results  {json_path}[/dim]")

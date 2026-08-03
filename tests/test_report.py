@@ -459,3 +459,59 @@ def test_comparison_averages_repeats_before_diffing(tmp_path):
         report_mod.print_comparison, report_mod.load(left), report_mod.load(right)
     )
     assert "+0.50" in text
+
+
+# --------------------------------------------------------------------------- #
+# Task definitions travel with results
+# --------------------------------------------------------------------------- #
+
+
+class FakeTask:
+    """Stands in for a LoadedTask — only `id` and `manifest()` are used."""
+
+    id = "t"
+
+    def manifest(self):
+        return {
+            "id": "t", "prompt": "Clear the queue.", "system": None, "tags": [],
+            "max_steps": 40, "allowed_tools": [], "forbidden_tools": ["admin_x"],
+            "rubric": [{"id": "tone", "description": "polite?", "weight": 1.0}],
+            "rubric_artifacts": ["outbox"],
+            "seed": {"documents": [{"id": "policy/x", "title": "P", "content": "rules"}]},
+            "files": {"task.yaml": "id: t\n", "verify.py": "def verify(): ..."},
+            "has_gold": True,
+        }
+
+
+def test_the_payload_carries_the_task_definition(tmp_path):
+    payload = report_mod.build_payload([make_result("t")], {"agent": "a"},
+                                       [FakeTask()])
+    assert payload["tasks"]["t"]["prompt"] == "Clear the queue."
+    assert payload["tasks"]["t"]["files"]["task.yaml"] == "id: t\n"
+
+
+def test_task_definitions_are_stored_once_not_per_run(tmp_path):
+    """Repeats share a definition; duplicating it would bloat every payload."""
+    results = [make_result("t"), make_result("t"), make_result("t")]
+    payload = report_mod.build_payload(results, {"agent": "a"}, [FakeTask()])
+    assert len(payload["results"]) == 3
+    assert list(payload["tasks"]) == ["t"]
+
+
+def test_saved_json_and_report_agree_about_the_task(tmp_path):
+    results, meta, tasks = [make_result("t")], {"agent": "a"}, [FakeTask()]
+    saved = json.loads(report_mod.save(results, tmp_path / "r", meta, tasks).read_text())
+    page = report_mod.write_html(results, tmp_path / "r", meta, tasks).read_text()
+    embedded = json.loads(page.split('id="payload">')[1].split("</script>")[0])
+    assert embedded["tasks"] == saved["tasks"]
+    assert "Clear the queue." in page  # the prompt reached the report
+
+
+def test_a_report_without_task_definitions_still_renders(tmp_path):
+    """Results saved before manifests existed must not break the explorer."""
+    page = report_mod.write_html([make_result("t")], tmp_path, {"agent": "a"})
+    assert page.read_text().count("<script") >= 1
+    payload = json.loads(
+        page.read_text().split('id="payload">')[1].split("</script>")[0]
+    )
+    assert payload["tasks"] == {}
