@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 500 tests; Docker tests skip if no image is built
+pytest              # 551 tests; Docker tests skip if no image is built
 pytest --cov        # gated at 98%
 ```
 
@@ -184,6 +184,80 @@ second to nine. Verify and safety share one crossing, since the container
 dominates. Sandboxing is a deployment choice and changes no score;
 `test_sandbox.py` runs every shipped task both ways and asserts the checks come
 out identical.
+
+## Benchmarks
+
+A `Benchmark` is where tasks come from. Reading a directory of hand-written
+tasks is one implementation; downloading SWE-bench and turning 300 GitHub
+issues into tasks is another. Both end at `LoadedTask`, so the runner, the
+grading, the report and the UI never learn which they are looking at.
+
+```bash
+agenteval benchmarks                                    # what can supply tasks
+agenteval --benchmark humaneval run --gold --limit 20   # offline once cached
+agenteval --benchmark local:/path/to/tasks list
+```
+
+Three methods, and adding one touches no existing code:
+
+```python
+class MyBenchmark:
+    name = "mine"
+    def prepare(self) -> None: ...            # download, cache, build
+    def instance_ids(self) -> list[str]: ...  # what is in it
+    def load(self, instance_id) -> LoadedTask
+```
+
+`prepare()` is separate because downloading is slow, shared and worth doing
+once, while loading happens per instance and must be cheap. Instance ids are
+the benchmark's own — `HumanEval/12`, `django__django-11099` — because
+rewriting them to be prettier makes results uncomparable with everyone else's.
+
+**`--limit` samples rather than taking the first N.** Benchmarks are usually
+ordered by something (difficulty, repository, date), so a prefix is a biased
+subset that still reads like a whole-benchmark score. The sample is seeded, and
+the results record the subset: `"20 of HumanEval's 164"` has to stay
+distinguishable from `"HumanEval"`.
+
+### Grading inside the container
+
+Most real benchmarks decide pass or fail by *running something* — the
+repository's test suite, a checker binary. None of that survives `collect:`,
+because what the verifier needs is not a file the agent wrote but the exit code
+of a command in the environment the agent worked in. So a task may supply:
+
+```python
+def grade_in_environment(world, trajectory, environment) -> list[Check]: ...
+```
+
+which runs while the container is still alive, before harvest and teardown.
+Running the tests at grading time also keeps the answer out of the agent's
+reach — a test file seeded up front is a test file the agent can read.
+
+### What ships
+
+`local` is the hand-written suite, re-expressed through the protocol. That is
+the honest test of the seam: an abstraction invented for downloaded benchmarks
+and never applied to the suite that already works is one nobody has tested.
+Nothing about the task format had to change.
+
+`humaneval` is the first adapter for something we did not write. **Its numbers
+are not interesting** — it is a decade of training data, and a frontier model
+scoring in the nineties on it has told you nothing. It earns its place by being
+60 KB instead of 300 GB, so the machinery underneath can be tested end to end
+in seconds. It is graded by one check at weight 1.0, deliberately: adding "did
+it run its own code first" would make the mean unrecognisable as pass@1, and a
+score that cannot be set beside everyone else's published number is a score
+nobody can use.
+
+The tests that matter there are the negative ones. A gold run passing proves
+nothing on its own — a grader that always says yes looks identical to a correct
+one until something fails. So wrong answers, missing files, wrong filenames,
+syntax errors and infinite loops each have to score zero *for the right stated
+reason*.
+
+SWE-bench is the same three methods with a bigger download and one change:
+`image:` becomes per instance rather than shared.
 
 ## Adding a task
 
@@ -365,8 +439,10 @@ design there and syncing back means updating the corresponding layer in
 ## Commands
 
 ```bash
+agenteval benchmarks                              # what can supply tasks
 agenteval list
 agenteval run --gold                              # offline, free
+agenteval --benchmark humaneval run --gold --limit 20
 agenteval run --agent claude:opus-5 -k 5 -c 8     # 5 repeats, 8 concurrent
 agenteval run --agent claude:sonnet-5:medium --tag writing
 agenteval run --agent claude --no-judge --fail-under 0.8   # CI gate

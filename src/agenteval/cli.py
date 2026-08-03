@@ -15,6 +15,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from . import benchmarks as bench
 from . import design
 from . import sandbox as sandbox_mod
 from . import report as report_mod
@@ -22,7 +23,7 @@ from . import ui
 from .agents import ScriptedAgent, build_agent
 from .grading.judge import LLMJudge
 from .runner import RunConfig, run_suite
-from .tasks import DEFAULT_TASK_ROOT, TaskError, discover, filter_by_tag
+from .tasks import DEFAULT_TASK_ROOT, LoadedTask, TaskError, filter_by_tag
 
 console = Console()
 
@@ -82,6 +83,59 @@ def make_sandbox(args: argparse.Namespace):
     return box
 
 
+def gather(args: argparse.Namespace) -> tuple[list[LoadedTask], "bench.Benchmark"]:
+    """Resolve the benchmark and load the instances asked for.
+
+    Everything that runs tasks goes through here, including the local task
+    directory. Keeping one path means the downloaded benchmarks are exercised
+    by the same code that has been running the hand-written suite all along,
+    rather than sitting on a parallel track that only gets tested when someone
+    remembers to.
+    """
+    # `--tasks` is the local benchmark's argument, so the flag keeps working
+    # unchanged and there is no special case for "the default benchmark".
+    benchmark = bench.resolve(args.benchmark or f"local:{args.tasks}")
+
+    box = make_sandbox(args)
+    if box is not None:
+        # Verifier isolation only means something where the verifier is
+        # untrusted Python from a task directory. A downloaded benchmark's
+        # adapter is code in this repository; pretending --sandbox covered it
+        # would be a false assurance, so say so instead.
+        if not hasattr(benchmark, "sandbox"):
+            raise TaskError(
+                f"--sandbox does not apply to the {benchmark.name} benchmark: it "
+                "isolates task-supplied verify.py, and this benchmark is graded "
+                "by adapter code in agenteval itself."
+            )
+        benchmark.sandbox = box
+
+    tasks = bench.load_tasks(
+        benchmark,
+        only=getattr(args, "task", None) or None,
+        limit=getattr(args, "limit", None),
+        seed=getattr(args, "seed", 0),
+    )
+    if getattr(args, "tag", None):
+        tasks = filter_by_tag(tasks, args.tag)
+    return tasks, benchmark
+
+
+def cmd_benchmarks(args: argparse.Namespace) -> int:
+    table = Table(title="benchmarks", header_style="bold")
+    table.add_column("name")
+    table.add_column("what it is")
+    for name, description in sorted(bench.registered().items()):
+        table.add_row(name, description)
+    console.print()
+    console.print(table)
+    console.print(
+        "[dim]select with --benchmark; anything after a colon is the "
+        "benchmark's own argument (a directory, a split, an image)[/dim]"
+    )
+    return 0
+
+
 def cmd_sandbox(args: argparse.Namespace) -> int:
     box = sandbox_mod.Sandbox()
     if args.action == "build":
@@ -99,8 +153,8 @@ def cmd_sandbox(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    tasks = discover(args.tasks, sandbox=make_sandbox(args))
-    table = Table(title=f"{len(tasks)} tasks in {args.tasks}", header_style="bold")
+    tasks, benchmark = gather(args)
+    table = Table(title=f"{len(tasks)} tasks in {benchmark.name}", header_style="bold")
     table.add_column("id")
     table.add_column("tags")
     table.add_column("tools", justify="right")
@@ -125,10 +179,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    tasks = discover(args.tasks, only=args.task or None,
-                     sandbox=make_sandbox(args))
-    if args.tag:
-        tasks = filter_by_tag(tasks, args.tag)
+    tasks, benchmark = gather(args)
     if not tasks:
         console.print("[red]No tasks matched.[/red]")
         return 1
@@ -237,6 +288,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         "repeats": config.repeats,
         "tasks": [t.id for t in tasks],
         "weights": {"state": config.w_state, "rubric": config.w_rubric},
+        # A benchmark score means nothing without the subset it came from.
+        # "20 of HumanEval's 164" is a different claim from "HumanEval", and
+        # the difference has to survive into the saved results or the number
+        # gets quoted as the second one.
+        "benchmark": bench.summarise(benchmark) | {"ran": len(tasks)},
     }
     json_path = report_mod.save(results, out_dir, meta, tasks)
     html_path = report_mod.write_html(results, out_dir, meta, tasks)
@@ -368,6 +424,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory of task definitions (default: ./tasks)",
     )
     parser.add_argument(
+        "--benchmark",
+        help="Where tasks come from (default: the local ./tasks directory). "
+        "Anything after a colon is that benchmark's own argument, e.g. "
+        "humaneval, local:/path/to/tasks. See `agenteval benchmarks`.",
+    )
+    parser.add_argument(
         "--sandbox",
         action="store_true",
         help="Run task code (verify.py) in a Docker container with no network "
@@ -385,7 +447,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_sandbox.add_argument("action", choices=["build", "check"])
     p_sandbox.set_defaults(func=cmd_sandbox)
 
+    p_benchmarks = sub.add_parser(
+        "benchmarks", help="List the benchmarks that can supply tasks"
+    )
+    p_benchmarks.set_defaults(func=cmd_benchmarks)
+
     p_list = sub.add_parser("list", help="List available tasks")
+    p_list.add_argument("--task", action="append", help="Only this instance")
+    p_list.add_argument("--tag", help="Only tasks carrying this tag")
+    p_list.add_argument(
+        "--limit", type=int, help="Sample this many instances (see `run --limit`)"
+    )
+    p_list.add_argument("--seed", type=int, default=0)
     p_list.set_defaults(func=cmd_list)
 
     p_run = sub.add_parser("run", help="Run a suite and grade it")
@@ -397,6 +470,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--task", action="append", help="Run only this task (repeatable)")
     p_run.add_argument("--tag", help="Run only tasks carrying this tag")
+    p_run.add_argument(
+        "--limit",
+        type=int,
+        help="Run a random sample of this many instances. Random rather than "
+        "the first N: benchmarks are usually ordered by something, so a prefix "
+        "is a biased sample that still looks like a whole-benchmark score.",
+    )
+    p_run.add_argument(
+        "--seed", type=int, default=0, help="Seed for --limit (default 0)"
+    )
     p_run.add_argument(
         "-k", "--repeats", type=int, default=1, help="Runs per task (variance)"
     )
@@ -497,6 +580,9 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except TaskError as exc:
         console.print(f"[red]Task error:[/red] {exc}")
+        return 2
+    except bench.BenchmarkError as exc:
+        console.print(f"[red]Benchmark error:[/red] {exc}")
         return 2
     except sandbox_mod.SandboxError as exc:
         console.print(f"[red]Sandbox error:[/red] {exc}")

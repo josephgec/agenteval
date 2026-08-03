@@ -11,6 +11,7 @@ tool registry on their own to build something else entirely.
 """
 
 from .agents import Agent, ClaudeAgent, OllamaAgent, ScriptedAgent, build_agent
+from .benchmarks import Benchmark, LocalBenchmark, load_tasks, register, resolve
 from .checks import Checks, checks
 from .cost import cost_usd
 from .grading import LLMJudge
@@ -24,6 +25,11 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Agent",
+    "Benchmark",
+    "LocalBenchmark",
+    "load_tasks",
+    "register",
+    "resolve",
     "ClaudeAgent",
     "OllamaAgent",
     "ScriptedAgent",

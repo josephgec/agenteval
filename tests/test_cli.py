@@ -102,7 +102,10 @@ def test_missing_credentials_refuse_the_run_and_point_at_gold(tasks_root, capsys
 def test_an_unknown_task_id_is_a_clean_error(tasks_root, capsys):
     code = cli.main(["--tasks", tasks_root, "run", "--gold", "--task", "nope"])
     assert code == 2
-    assert "unknown task" in capsys.readouterr().out.lower()
+    out = capsys.readouterr().out
+    assert "nope" in out
+    # A typo should be a one-line fix, not a trip back to the task directory.
+    assert "ticket_triage" in out
 
 
 def test_a_tag_that_matches_nothing_is_reported(tasks_root, capsys):
@@ -287,7 +290,7 @@ def test_custom_score_weights_are_recorded(stubbed_run, tasks_root, tmp_path):
 def test_a_broken_tasks_directory_is_a_clean_error(capsys):
     code = cli.main(["--tasks", "/nonexistent/path", "list"])
     assert code == 2
-    assert "Task error" in capsys.readouterr().out
+    assert "does not exist" in capsys.readouterr().out
 
 
 def test_interrupting_a_run_exits_130_without_a_traceback(
@@ -297,9 +300,70 @@ def test_interrupting_a_run_exits_130_without_a_traceback(
     def interrupt(*a, **k):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli, "discover", interrupt)
+    monkeypatch.setattr(cli, "gather", interrupt)
     assert cli.main(["--tasks", tasks_root, "run", "--gold"]) == 130
     assert "Interrupted" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# Choosing a benchmark
+# --------------------------------------------------------------------------- #
+
+
+def test_benchmarks_lists_what_can_supply_tasks(capsys):
+    assert cli.main(["benchmarks"]) == 0
+    out = capsys.readouterr().out
+    assert "local" in out and "humaneval" in out
+
+
+def test_the_local_directory_is_still_the_default(tasks_root, capsys, monkeypatch):
+    """`--tasks` keeps working untouched: it is the local benchmark's argument
+    rather than a flag the benchmark layer had to grow a special case for."""
+    monkeypatch.setenv("COLUMNS", "200")
+    assert cli.main(["--tasks", tasks_root, "list"]) == 0
+    assert "ticket_triage" in capsys.readouterr().out
+
+
+def test_an_unknown_benchmark_is_refused(capsys):
+    assert cli.main(["--benchmark", "swe-bench", "list"]) == 2
+    assert "unknown benchmark" in capsys.readouterr().out
+
+
+def test_the_sandbox_flag_refuses_to_pretend_it_covers_a_benchmark(capsys):
+    """--sandbox isolates task-supplied verify.py. A downloaded benchmark is
+    graded by adapter code in this repository, so silently accepting the flag
+    would be a false assurance about the thing it exists to assure."""
+    code = cli.main(["--benchmark", "humaneval", "--sandbox", "list"])
+    assert code == 2
+    assert "does not apply" in capsys.readouterr().out
+
+
+def test_the_sandbox_reaches_the_local_benchmark(tasks_root, monkeypatch, capsys):
+    """Where it does apply, it has to actually arrive — a --sandbox that is
+    accepted and then dropped is worse than one that is refused."""
+    seen = {}
+
+    class Box:
+        def load(self, task_id, source):
+            seen["loaded"] = task_id
+            return {"has_safety": False, "gold": None}
+
+    monkeypatch.setattr(cli, "make_sandbox", lambda args: Box())
+    monkeypatch.setenv("COLUMNS", "200")
+    assert cli.main(["--tasks", tasks_root, "--sandbox", "list"]) == 0
+    assert seen["loaded"]
+
+
+def test_a_run_records_which_benchmark_and_how_much_of_it(tasks_root, tmp_path):
+    out = tmp_path / "run"
+    cli.main(
+        ["--tasks", tasks_root, "run", "--gold", "--limit", "2", "--out", str(out)]
+    )
+    meta = json.loads((out / "results.json").read_text())["meta"]
+    assert meta["benchmark"]["name"] == "local"
+    assert meta["benchmark"]["ran"] == 2
+    # The subset has to be distinguishable from the whole thing.
+    assert meta["benchmark"]["instances"] > 2
 
 
 # --------------------------------------------------------------------------- #

@@ -23,7 +23,7 @@ from .exec import attach as exec_attach
 from .exec import harvest_into as exec_harvest
 from .registry import ToolSession
 from .tasks import LoadedTask
-from .types import RunResult, Score, Trajectory, Usage
+from .types import Check, RunResult, Score, Trajectory, Usage
 from .state import World
 
 ProgressFn = Callable[[str, RunResult | None], None]
@@ -98,6 +98,9 @@ async def run_one(
         return failed(f"environment setup raised {type(exc).__name__}: {exc}")
     exec_attach(world, environment)
 
+    #: Checks produced inside the container, before it was destroyed.
+    env_checks: list[Check] = []
+
     clock = time.perf_counter()
     try:
         await agent.run(task.spec, session, trajectory)
@@ -106,10 +109,23 @@ async def run_one(
         _note(trajectory, f"{type(exc).__name__}: {exc}")
     finally:
         trajectory.wall_seconds = time.perf_counter() - clock
-        # Grading reads the world, not the container, so it is torn down first
-        # — a verifier that needs the container should copy what it needs out
-        # during the run.
         if environment is not None:
+            # Anything that needs the live container happens here, in this
+            # order: grade first, then harvest, then destroy. Most real
+            # benchmarks decide pass or fail by running the repository's own
+            # tests, and neither an exit code nor a pytest summary is something
+            # `collect:` can carry out of a container that no longer exists.
+            if task.grade_in_environment is not None:
+                try:
+                    env_checks = task.grade_in_environment(
+                        world, trajectory, environment
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    status = "harness_error"
+                    _note(
+                        trajectory,
+                        f"in-container grading raised {type(exc).__name__}: {exc}",
+                    )
             try:
                 exec_harvest(world, environment)
             except Exception as exc:  # noqa: BLE001
@@ -122,9 +138,10 @@ async def run_one(
     # that errors after doing the work is a different failure from one that
     # errors having done nothing, and the checks are what tell them apart.
     try:
-        score.state_checks = task.verify(world, trajectory)
+        score.state_checks = [*env_checks, *task.verify(world, trajectory)]
     except Exception as exc:  # noqa: BLE001 - a broken verifier is a harness bug
         status = "harness_error"
+        score.state_checks = env_checks
         _note(trajectory, f"verifier raised {type(exc).__name__}: {exc}")
 
     try:

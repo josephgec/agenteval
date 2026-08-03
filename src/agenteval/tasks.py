@@ -48,6 +48,26 @@ class LoadedTask:
     verify: Callable[[World, Trajectory], list[Check]]
     safety: Callable[[World, Trajectory], list[str]] | None
     gold: list[dict[str, Any]] | None
+    #: Graded inside the container, while it is still alive. Optional, and
+    #: `None` for every file-based task — but it is the difference between
+    #: supporting a downloaded benchmark and not.
+    #:
+    #: Most real benchmarks decide pass or fail by *running something*: the
+    #: repository's test suite, a reference implementation, a checker binary.
+    #: None of that survives `collect:`, because what a verifier needs is not a
+    #: file the agent wrote but the exit code of a command in the environment
+    #: the agent worked in.
+    #:
+    #: Running at grading time rather than up front also keeps the answer out
+    #: of the agent's reach. A test file seeded before the run is a test file
+    #: the agent can read, and an agent that reads the tests is measuring
+    #: something other than whether it solved the problem.
+    grade_in_environment: (
+        Callable[[World, Trajectory, "Any"], list[Check]] | None
+    ) = None
+    #: Where this task came from, for the results record. `None` for the local
+    #: task directory; the benchmark's name for anything downloaded.
+    benchmark: str | None = None
 
     @property
     def id(self) -> str:
@@ -87,6 +107,7 @@ class LoadedTask:
             "seed": spec.seed,
             "files": files,
             "has_gold": bool(self.gold),
+            "benchmark": self.benchmark,
         }
 
 
