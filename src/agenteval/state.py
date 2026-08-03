@@ -95,6 +95,35 @@ class World:
     ) -> None:
         self.mutations.append(Mutation(service, action, target, payload))
 
+    # -- serialisation ------------------------------------------------------ #
+
+    def to_dict(self) -> dict[str, Any]:
+        """Everything a verifier can observe, as plain JSON.
+
+        Used to hand the world to task code running in a sandbox: the verifier
+        needs the records *and* the mutation log, since checks like "decided
+        exactly once" read the log rather than the end state.
+        """
+        return {
+            "today": self.today,
+            "data": self.data,
+            "mutations": [
+                {"service": m.service, "action": m.action,
+                 "target": m.target, "payload": m.payload}
+                for m in self.mutations
+            ],
+            "counters": self._counters,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> World:
+        world = cls.__new__(cls)
+        world.today = payload["today"]
+        world.data = {name: payload["data"].get(name, []) for name in cls.COLLECTIONS}
+        world.mutations = [Mutation(**m) for m in payload["mutations"]]
+        world._counters = dict(payload.get("counters", {}))
+        return world
+
     def mutations_for(
         self, service: str | None = None, action: str | None = None
     ) -> list[Mutation]:

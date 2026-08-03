@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import design
+from . import sandbox as sandbox_mod
 from . import report as report_mod
 from . import ui
 from .agents import ScriptedAgent, build_agent
@@ -72,8 +73,33 @@ def report_missing_credentials(judge_only: bool = False) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def make_sandbox(args: argparse.Namespace):
+    """The sandbox, if asked for, checked before anything depends on it."""
+    if not getattr(args, "sandbox", False):
+        return None
+    box = sandbox_mod.Sandbox(timeout=args.sandbox_timeout)
+    box.preflight()
+    return box
+
+
+def cmd_sandbox(args: argparse.Namespace) -> int:
+    box = sandbox_mod.Sandbox()
+    if args.action == "build":
+        console.print(f"[dim]building {box.image}…[/dim]")
+        box.build()
+        console.print(f"[green]built[/green] {box.image}")
+        return 0
+    box.preflight()
+    console.print(f"[green]ready[/green] {box.image}")
+    console.print(
+        "[dim]task code runs with no network, no environment, a read-only "
+        "root and all capabilities dropped[/dim]"
+    )
+    return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
-    tasks = discover(args.tasks)
+    tasks = discover(args.tasks, sandbox=make_sandbox(args))
     table = Table(title=f"{len(tasks)} tasks in {args.tasks}", header_style="bold")
     table.add_column("id")
     table.add_column("tags")
@@ -99,7 +125,8 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    tasks = discover(args.tasks, only=args.task or None)
+    tasks = discover(args.tasks, only=args.task or None,
+                     sandbox=make_sandbox(args))
     if args.tag:
         tasks = filter_by_tag(tasks, args.tag)
     if not tasks:
@@ -340,7 +367,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(DEFAULT_TASK_ROOT),
         help="Directory of task definitions (default: ./tasks)",
     )
+    parser.add_argument(
+        "--sandbox",
+        action="store_true",
+        help="Run task code (verify.py) in a Docker container with no network "
+        "and no environment. Use for task suites you did not write.",
+    )
+    parser.add_argument(
+        "--sandbox-timeout", type=float, default=60.0,
+        help="Wall-clock ceiling per sandboxed call (default 60s)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_sandbox = sub.add_parser(
+        "sandbox", help="Build or check the task-sandbox container image"
+    )
+    p_sandbox.add_argument("action", choices=["build", "check"])
+    p_sandbox.set_defaults(func=cmd_sandbox)
 
     p_list = sub.add_parser("list", help="List available tasks")
     p_list.set_defaults(func=cmd_list)
@@ -454,6 +497,9 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except TaskError as exc:
         console.print(f"[red]Task error:[/red] {exc}")
+        return 2
+    except sandbox_mod.SandboxError as exc:
+        console.print(f"[red]Sandbox error:[/red] {exc}")
         return 2
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted.[/yellow]")

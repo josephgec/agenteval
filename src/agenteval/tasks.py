@@ -100,7 +100,13 @@ def _load_module(path: Path, name: str) -> ModuleType:
     return module
 
 
-def load_task(directory: Path) -> LoadedTask:
+def load_task(directory: Path, sandbox: "Any | None" = None) -> LoadedTask:
+    """Load one task.
+
+    With a `sandbox`, verify.py is shipped to a container and never executed
+    here — the point of the flag is that untrusted task code does not touch
+    this interpreter, so the in-process import below must not happen at all.
+    """
     directory = Path(directory)
     config_path = directory / "task.yaml"
     if not config_path.exists():
@@ -146,6 +152,22 @@ def load_task(directory: Path) -> LoadedTask:
     verify_path = directory / "verify.py"
     if not verify_path.exists():
         raise TaskError(f"task {task_id} has no verify.py")
+    if sandbox is not None:
+        from .sandbox import SandboxedGrader, SandboxError
+
+        source = verify_path.read_text()
+        try:
+            info = sandbox.load(task_id, source)
+        except SandboxError as exc:
+            raise TaskError(f"task {task_id}: {exc}") from exc
+        grader = SandboxedGrader(sandbox, task_id, source)
+        return LoadedTask(
+            spec=spec,
+            verify=grader.verify,
+            safety=grader.safety if info["has_safety"] else None,
+            gold=info["gold"],
+        )
+
     module = _load_module(verify_path, f"agenteval_task_{task_id}")
     if not hasattr(module, "verify"):
         raise TaskError(f"task {task_id}: verify.py defines no verify()")
@@ -159,14 +181,16 @@ def load_task(directory: Path) -> LoadedTask:
 
 
 def discover(
-    root: Path | str = DEFAULT_TASK_ROOT, only: list[str] | None = None
+    root: Path | str = DEFAULT_TASK_ROOT,
+    only: list[str] | None = None,
+    sandbox: "Any | None" = None,
 ) -> list[LoadedTask]:
     """Load every task under `root`, optionally filtered to specific ids."""
     root = Path(root)
     if not root.exists():
         raise TaskError(f"task directory {root} does not exist")
     tasks = [
-        load_task(d)
+        load_task(d, sandbox=sandbox)
         for d in sorted(root.iterdir())
         if d.is_dir() and (d / "task.yaml").exists()
     ]

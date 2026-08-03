@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 423 tests, ~3s, no network
+pytest              # 462 tests; Docker tests skip if no image is built
 pytest --cov        # gated at 98%
 ```
 
@@ -103,6 +103,42 @@ and expensive to notice:
 - **The HTML report escapes everything interpolated into it.** The judge is
   instructed to quote spans from the artifacts, so its reasoning carries
   agent-authored text into a page meant to be shared.
+
+## Running task code in a container
+
+`verify.py` is arbitrary Python, and loading a task executes it. For tasks you
+wrote that is fine. For a task suite you downloaded it is untrusted code in your
+interpreter — and `agenteval list` alone is enough to run every one of them.
+
+```bash
+agenteval sandbox build          # once
+agenteval --sandbox run --gold   # verify.py never touches this interpreter
+```
+
+**Only the task code is containerised, not the run.** The agent loop and the
+API key stay on the host. Putting the whole run in one container would place a
+malicious verifier next to your credential, which is most of what you were
+trying to prevent. The sandbox therefore gets **no network and no environment**:
+nothing to steal, and nowhere to send it.
+
+The world crosses as JSON and comes back as checks and violations. That is the
+entire interface — a verifier cannot reach the agent, the API, the filesystem,
+or the other runs in the suite.
+
+Measured against a deliberately hostile verifier:
+
+| The verifier tries to | In-process | Sandboxed |
+|---|---|---|
+| Read `ANTHROPIC_API_KEY` | **reads it** | not visible |
+| Open a socket | **reaches the internet** | blocked |
+| Write to the host | **writes** | blocked |
+| Host env vars visible | 48 | 10 container defaults |
+
+Cost is roughly a container per graded run — the gold suite goes from about a
+second to nine. Verify and safety share one crossing, since the container
+dominates. Sandboxing is a deployment choice and changes no score;
+`test_sandbox.py` runs every shipped task both ways and asserts the checks come
+out identical.
 
 ## Adding a task
 

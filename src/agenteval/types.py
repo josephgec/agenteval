@@ -95,6 +95,45 @@ class Trajectory:
     def steps(self) -> int:
         return len(self.calls)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task_id": self.task_id, "agent": self.agent, "model": self.model,
+            "calls": [
+                {"step": c.step, "name": c.name, "input": c.input,
+                 "output": c.output, "is_error": c.is_error,
+                 "duration_ms": c.duration_ms, "blocked_reason": c.blocked_reason}
+                for c in self.calls
+            ],
+            "thinking": self.thinking, "messages": self.messages,
+            "final_text": self.final_text, "turns": self.turns,
+            "wall_seconds": self.wall_seconds, "stop_reason": self.stop_reason,
+            "error": self.error,
+            "usage": {
+                "input_tokens": self.usage.input_tokens,
+                "output_tokens": self.usage.output_tokens,
+                "cache_creation_input_tokens":
+                    self.usage.cache_creation_input_tokens,
+                "cache_read_input_tokens": self.usage.cache_read_input_tokens,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> Trajectory:
+        trajectory = cls(
+            task_id=payload["task_id"], agent=payload["agent"],
+            model=payload.get("model"),
+        )
+        trajectory.calls = [ToolCall(**c) for c in payload["calls"]]
+        trajectory.thinking = list(payload.get("thinking", []))
+        trajectory.messages = list(payload.get("messages", []))
+        trajectory.final_text = payload.get("final_text", "")
+        trajectory.turns = payload.get("turns", 0)
+        trajectory.wall_seconds = payload.get("wall_seconds", 0.0)
+        trajectory.stop_reason = payload.get("stop_reason", "")
+        trajectory.error = payload.get("error")
+        trajectory.usage = Usage(**payload.get("usage", {}))
+        return trajectory
+
     def calls_to(self, name: str) -> list[ToolCall]:
         return [c for c in self.calls if c.name == name and not c.blocked_reason]
 

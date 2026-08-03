@@ -432,3 +432,57 @@ def test_probing_for_the_ant_binary_never_raises(monkeypatch, failure):
 
     monkeypatch.setattr(cli.subprocess, "run", boom)
     assert REAL_CREDENTIALS_AVAILABLE() is False
+
+
+# --------------------------------------------------------------------------- #
+# Sandbox commands
+# --------------------------------------------------------------------------- #
+
+
+def test_sandbox_build_and_check(monkeypatch, capsys):
+    from agenteval import sandbox as sandbox_mod
+
+    built = []
+    monkeypatch.setattr(sandbox_mod.Sandbox, "build",
+                        lambda self: built.append(self.image))
+    monkeypatch.setattr(sandbox_mod.Sandbox, "preflight", lambda self: None)
+
+    assert cli.main(["sandbox", "build"]) == 0
+    assert built == ["agenteval-sandbox:latest"]
+
+    assert cli.main(["sandbox", "check"]) == 0
+    assert "ready" in capsys.readouterr().out
+
+
+def test_a_sandbox_failure_is_a_clean_exit_not_a_traceback(monkeypatch, capsys):
+    from agenteval import sandbox as sandbox_mod
+
+    def unavailable(self):
+        raise sandbox_mod.SandboxError("image is not built")
+
+    monkeypatch.setattr(sandbox_mod.Sandbox, "preflight", unavailable)
+    assert cli.main(["sandbox", "check"]) == 2
+    assert "Sandbox error" in capsys.readouterr().out
+
+
+def test_no_sandbox_flag_means_no_container(tasks_root):
+    """The default has to stay in-process — sandboxing is opt-in, and building
+    a Sandbox eagerly would demand Docker from everyone."""
+    args = cli.build_parser().parse_args(["--tasks", tasks_root, "list"])
+    assert cli.make_sandbox(args) is None
+
+
+def test_the_sandbox_flag_preflights_before_anything_depends_on_it(
+    monkeypatch, tasks_root
+):
+    from agenteval import sandbox as sandbox_mod
+
+    checked = []
+    monkeypatch.setattr(sandbox_mod.Sandbox, "preflight",
+                        lambda self: checked.append(True))
+    args = cli.build_parser().parse_args(
+        ["--sandbox", "--sandbox-timeout", "12", "--tasks", tasks_root, "list"]
+    )
+    box = cli.make_sandbox(args)
+    assert checked == [True]
+    assert box.timeout == 12.0
