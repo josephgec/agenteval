@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 694 tests; Docker and egress tests skip if unavailable
+pytest              # 716 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -529,6 +529,43 @@ approve something that violates policy. Enforcing rules in the environment would
 make the task untestable, because the agent could no longer fail. The world
 records what happened; the verifier judges it.
 
+## Tracking results across runs
+
+```bash
+agenteval dashboard          # writes runs/index.html and opens it
+```
+
+`ui.py` explains one run; this explains a directory of them. It leads with the
+question a scoreboard cannot answer:
+
+**Which tasks still tell you anything?** Two columns, because they need
+different amounts of evidence:
+
+- **spread** — best model's mean minus worst — does this task separate the
+  models you have run? Needs two models.
+- **headroom** — one minus the best model's mean — can it still show an
+  improvement? Needs one, and it is what catches a saturated suite *before* you
+  have a second frontier model to compare against.
+
+`gold` counts toward neither. It replays the reference solution and scores 1.00
+by construction — that is what makes it proof the task is solvable, and exactly
+what would make every task look discriminating if it were counted as a model.
+It gets its own column instead.
+
+Rows are shaded when they have stopped informing, and sorted so those come
+first: a task the best model already solves costs money on every run and moves
+no number. On this repository's own runs that is 3 of the 5 enterprise tasks —
+the ceiling problem, visible without having to remember it.
+
+The leaderboard shows **all-time and latest** side by side, because they
+diverge whenever a task or a verifier changed underneath. One run in this
+project's history scored 0.50 on a task a bug was zeroing; averaging it with
+the fixed run describes neither.
+
+Trust travels with every row — suspect runs, unsafe runs, errored runs — so a
+model that never emitted a tool call does not sit at the bottom of a
+leaderboard looking merely bad.
+
 ## The report
 
 Every run writes a standalone `report.html` beside its `results.json`.
@@ -616,6 +653,7 @@ agenteval show runs/<dir> [--task ID] [--full]   # trajectory in the terminal
 agenteval ui runs/<dir>                          # the same run in a browser
 agenteval design                                 # rebuild design specimens
 agenteval run --resume runs/<dir>                 # continue after a crash
+agenteval dashboard                              # every run, aggregated
 agenteval report runs/<dir>
 agenteval compare runs/<a> runs/<b>
 ```

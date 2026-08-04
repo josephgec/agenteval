@@ -17,6 +17,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from . import benchmarks as bench
+from . import dashboard as dashboard_mod
 from . import design
 from . import sandbox as sandbox_mod
 from . import report as report_mod
@@ -485,6 +486,49 @@ def cmd_ui(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """Aggregate every saved run into one page."""
+    path = dashboard_mod.write(args.runs, args.out)
+    payload = dashboard_mod.build(args.runs)
+    totals = payload["totals"]
+    if not totals["runs"]:
+        console.print(
+            f"[yellow]No runs found under {args.runs}.[/yellow] "
+            "Try [bold]agenteval run --gold[/bold] first."
+        )
+        return 1
+    console.print(
+        f"{totals['runs']} runs · {totals['measurements']} measurements · "
+        f"{totals['agents']} agents · ${totals['cost']:.2f}"
+    )
+    # The finding this page exists for, said in the terminal too: a task the
+    # best model already solves costs money on every run and moves no number.
+    compared = [t for t in payload["tasks"] if t["spread"] is not None]
+    flat = [t for t in compared if t["spread"] < 0.05]
+    measured = [t for t in payload["tasks"] if t["headroom"] is not None]
+    saturated = [t for t in measured if t["headroom"] < 0.05]
+    if compared:
+        console.print(
+            f"[yellow]{len(flat)} of {len(compared)}[/yellow] tasks run by more "
+            "than one model separate them by less than 0.05"
+        )
+    if measured:
+        console.print(
+            f"[yellow]{len(saturated)} of {len(measured)}[/yellow] tasks are "
+            "already solved by the best model, so they cannot rank anything "
+            "above it"
+        )
+    if totals["warnings"]:
+        console.print(
+            f"[yellow]{totals['warnings']} runs[/yellow] may not be measuring "
+            "anything — see the trust column"
+        )
+    console.print(f"[dim]{path}[/dim]")
+    if not args.no_open:
+        webbrowser.open(path.resolve().as_uri())
+    return 0
+
+
 def cmd_design(args: argparse.Namespace) -> int:
     """Rebuild the design-system specimens from the live stylesheet.
 
@@ -677,6 +721,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-open", action="store_true", help="Write the file without opening it"
     )
     p_ui.set_defaults(func=cmd_ui)
+
+    p_dashboard = sub.add_parser(
+        "dashboard", help="Aggregate every saved run into one page"
+    )
+    p_dashboard.add_argument(
+        "--runs", default="runs", help="Directory of run directories"
+    )
+    p_dashboard.add_argument("--out", help="Output file (default: <runs>/index.html)")
+    p_dashboard.add_argument("--no-open", action="store_true")
+    p_dashboard.set_defaults(func=cmd_dashboard)
 
     p_design = sub.add_parser(
         "design", help="Rebuild the design-system specimens from the stylesheet"
