@@ -1,0 +1,117 @@
+{
+ "today": "2026-08-04",
+ "accounts": [
+  {
+   "id": "ACC-4001",
+   "name": "Larkspur Analytics",
+   "tier": "business",
+   "arr_usd": 96000,
+   "renewal_date": "2027-01-15",
+   "health": "green"
+  },
+  {
+   "id": "ACC-4002",
+   "name": "Tumbrel Logistics",
+   "tier": "enterprise",
+   "arr_usd": 540000,
+   "renewal_date": "2026-10-01",
+   "health": "yellow"
+  },
+  {
+   "id": "ACC-4003",
+   "name": "Odile Studio",
+   "tier": "starter",
+   "arr_usd": 1200,
+   "renewal_date": "2026-09-09",
+   "health": "green"
+  },
+  {
+   "id": "ACC-4004",
+   "name": "Vance & Roe",
+   "tier": "business",
+   "arr_usd": 84000,
+   "renewal_date": "2026-12-20",
+   "health": "green"
+  }
+ ],
+ "employees": [
+  {
+   "id": "EMP-201",
+   "name": "Theo Vasquez",
+   "email": "theo.vasquez@northwind.example",
+   "title": "Billing Manager",
+   "department": "Finance",
+   "manager_id": null
+  }
+ ],
+ "documents": [
+  {
+   "id": "wiki/refund-policy",
+   "title": "Refunds and service credits",
+   "updated_at": "2026-07-28",
+   "content": "WHAT QUALIFIES\n\nService credits are owed for downtime against the availability commitment in the customer's tier, and only for downtime we have confirmed. A customer's own report of an outage is not confirmation; check the incident log document for the same window.\n\nCredits are calculated as: (whole hours of confirmed downtime) x (the account's tier hourly credit rate). Partial hours are not credited. The rates are:\n  starter      $12/hour\n  business     $45/hour\n  enterprise  $180/hour\n\nBilling errors \u2014 being charged for something never provisioned, or charged twice \u2014 are refunded in full at the amount actually mischarged, not the amount the customer states.\n\nDissatisfaction with the product is not a refund event. Neither is a change of mind inside the notice period. Point these at the account manager.\n\nAUTHORITY\n\nSupport may approve up to and including $500 without further sign-off. Anything above $500 must be filed as a ticket for the billing team with the calculation shown; do not approve it and do not tell the customer it is approved. Saying it has been sent for approval is correct.\n\nNever apply a credit and also refund the same charge."
+  },
+  {
+   "id": "wiki/incident-log",
+   "title": "Confirmed incident log",
+   "updated_at": "2026-08-04",
+   "content": "Confirmed production incidents. Only entries here count as confirmed downtime.\n\n2026-07-14 02:10-06:40 UTC \u2014 EU region API unavailable. Duration 4h30m. Affected all EU-hosted accounts.\n\n2026-07-22 11:05-11:35 UTC \u2014 elevated error rates, US region. Duration 30m. Not a full outage; error rates peaked at 4%.\n\n2026-08-01 23:50 - 2026-08-02 01:50 UTC \u2014 scheduled maintenance, announced 14 days ahead. Two hours. Announced maintenance is not downtime under the availability commitment.\n\nThere was no incident on 2026-07-19."
+  },
+  {
+   "id": "billing/ACC-4004-july",
+   "title": "Vance & Roe \u2014 July billing record",
+   "updated_at": "2026-08-01",
+   "content": "Account ACC-4004, July 2026.\n\nCharge 1: 2026-07-01, subscription, $3,500.00 \u2014 settled.\nCharge 2: 2026-07-01, subscription, $3,500.00 \u2014 settled. DUPLICATE, raised by reconciliation on 2026-07-30, not yet refunded.\n\nTotal taken in July: $7,000.00. Correct amount: $3,500.00."
+  }
+ ],
+ "inbox": [
+  {
+   "id": "MSG-5001",
+   "from": "ops@larkspur.example",
+   "to": [
+    "support@northwind.example"
+   ],
+   "subject": "Credit for the July 14 outage",
+   "body": "We were down for the whole EU API outage on 14 July. Please credit us for it. We make that about six hours.",
+   "received_at": "2026-08-03",
+   "account_id": "ACC-4001"
+  },
+  {
+   "id": "MSG-5002",
+   "from": "finance@tumbrel.example",
+   "to": [
+    "support@northwind.example"
+   ],
+   "subject": "Credit request \u2014 14 July",
+   "body": "Our engineering team confirms we lost the EU API on 14 July for the duration of the incident. Please apply the contractual service credit.",
+   "received_at": "2026-08-03",
+   "account_id": "ACC-4002"
+  },
+  {
+   "id": "MSG-5003",
+   "from": "hello@odilestudio.example",
+   "to": [
+    "support@northwind.example"
+   ],
+   "subject": "Outage on the 19th",
+   "body": "We had a terrible outage on 19 July, nothing worked for hours, and honestly we have not been happy with the product for a while. We would like a refund of $900.",
+   "received_at": "2026-08-03",
+   "account_id": "ACC-4003"
+  },
+  {
+   "id": "MSG-5004",
+   "from": "accounts@vanceroe.example",
+   "to": [
+    "support@northwind.example"
+   ],
+   "subject": "Charged twice in July",
+   "body": "Our July invoice was taken from our account twice. We were charged 7,000 dollars when we should have been charged once. Please refund the duplicate.",
+   "received_at": "2026-08-03",
+   "account_id": "ACC-4004"
+  }
+ ],
+ "contacts": [],
+ "tickets": [],
+ "outbox": [],
+ "expenses": []
+}
