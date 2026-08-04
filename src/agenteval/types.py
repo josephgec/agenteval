@@ -245,6 +245,10 @@ class RunResult:
     judge_cost_usd: float = 0.0
     judge_model: str | None = None
     judge_usage: Usage = field(default_factory=Usage)
+    #: Reasons to distrust this run's score — a scaffold that never engaged, a
+    #: tool call the model wrote out as text. Warnings never move a number;
+    #: they say the number may not mean what it looks like.
+    warnings: list[str] = field(default_factory=list)
     #: Documents the *harness* put in the world rather than the agent's tool
     #: calls: files harvested out of a container, a captured diff. The report's
     #: artifact panel is otherwise built from tool calls alone, so everything
@@ -279,6 +283,11 @@ class RunResult:
                     else round(self.score.rubric_score, 4)
                 ),
                 "safe": self.score.safe,
+                # Carried so a saved run recomputes to the number it was
+                # printed with. Without them a result reloaded for a resumed
+                # suite silently reblends at the defaults.
+                "weights": {"state": self.score.w_state,
+                            "rubric": self.score.w_rubric},
                 "safety_violations": self.score.safety_violations,
                 "checks": [
                     {
@@ -320,6 +329,7 @@ class RunResult:
                 "cache_read_tokens": self.judge_usage.cache_read_input_tokens,
             },
             "artifacts": self.artifacts,
+            "warnings": self.warnings,
             # Delegated rather than hand-built. These were two separate
             # serialisations of the same object, and a field added to one
             # silently never reached the saved record — which is how the
@@ -327,3 +337,52 @@ class RunResult:
             # saved trajectory round-trips back through Trajectory.from_dict.
             "trajectory": t.to_dict(),
         }
+
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> RunResult:
+        """Rebuild a saved run.
+
+        The counterpart to `to_dict`, and tested as a round trip rather than
+        field by field — the last time this codebase had two serialisations of
+        one object that were maintained separately, a field reached the file
+        through one of them and vanished through the other.
+        """
+        score_payload = payload["score"]
+        weights = score_payload.get("weights") or {}
+        score = Score(
+            state_checks=[
+                Check(name=c["name"], passed=c["passed"],
+                      weight=c.get("weight", 1.0), detail=c.get("detail", ""))
+                for c in score_payload.get("checks", [])
+            ],
+            rubric_scores=[
+                RubricScore(id=r["id"], score=r["score"], weight=r["weight"],
+                            reasoning=r.get("reasoning", ""))
+                for r in score_payload.get("rubric_scores", [])
+            ],
+            safety_violations=list(score_payload.get("safety_violations", [])),
+            w_state=weights.get("state", 0.7),
+            w_rubric=weights.get("rubric", 0.3),
+        )
+        process = payload.get("process", {})
+        judge = payload.get("judge", {})
+        return cls(
+            task_id=payload["task_id"],
+            agent=payload["agent"],
+            model=payload.get("model"),
+            trajectory=Trajectory.from_dict(payload["trajectory"]),
+            score=score,
+            agent_cost_usd=process.get("agent_cost_usd", 0.0),
+            judge_cost_usd=process.get("judge_cost_usd", 0.0),
+            judge_model=judge.get("model"),
+            judge_usage=Usage(
+                input_tokens=judge.get("input_tokens", 0),
+                output_tokens=judge.get("output_tokens", 0),
+                cache_read_input_tokens=judge.get("cache_read_tokens", 0),
+            ),
+            artifacts=list(payload.get("artifacts", [])),
+            warnings=list(payload.get("warnings", [])),
+            status=payload.get("status", "ok"),
+            started_at=payload.get("started_at", 0.0),
+        )

@@ -264,7 +264,36 @@ def cmd_run(args: argparse.Namespace) -> int:
         w_rubric=args.w_rubric,
     )
 
+    # Resolved before the run so the journal is open and the header checked
+    # before a single token is spent.
+    out_dir = Path(args.resume or args.out) if (args.resume or args.out) \
+        else _default_out_dir(agent_label)
+    meta = {
+        "agent": agent_label,
+        "judge_model": None if not judge else judge.model,
+        "repeats": config.repeats,
+        "tasks": [t.id for t in tasks],
+        "weights": {"state": config.w_state, "rubric": config.w_rubric},
+        # A benchmark score means nothing without the subset it came from.
+        # "20 of HumanEval's 164" is a different claim from "HumanEval", and
+        # the difference has to survive into the saved results or the number
+        # gets quoted as the second one.
+        "benchmark": bench.summarise(benchmark) | {"ran": len(tasks)},
+    }
+    try:
+        done = report_mod.read_journal(out_dir, meta) if args.resume else []
+    except report_mod.ResumeMismatch as exc:
+        console.print(f"[red]Cannot resume:[/red] {exc}")
+        return 2
+    already = report_mod.completed_counts(done)
+    journal = report_mod.open_journal(out_dir, meta)
+
     total = len(tasks) * config.repeats
+    if done:
+        console.print(
+            f"[green]resuming[/green] {out_dir} · {len(done)} of {total} runs "
+            "already recorded"
+        )
     console.print(
         f"\n[bold]{agent_label}[/bold] · {len(tasks)} tasks × {config.repeats} "
         f"= {total} runs · concurrency {config.concurrency}"
@@ -272,13 +301,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     report_images_to_pull(tasks)
 
-    done = 0
+    finished = len(done)
 
     def progress(task_id: str, result) -> None:
-        nonlocal done
+        nonlocal finished
         if result is None:
             return
-        done += 1
+        # Written here rather than at the end: this callback is the only point
+        # at which a completed run exists and the process is still alive.
+        report_mod.append_to_journal(journal, result)
+        finished += 1
         mark = (
             "[green]●[/green]"
             if result.score.overall >= 0.85
@@ -289,7 +321,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not result.score.safe:
             mark = "[red]![/red]"
         console.print(
-            f"  {mark} [{done:>3}/{total}] {task_id:<22} "
+            f"  {mark} [{finished:>3}/{total}] {task_id:<22} "
             f"{result.score.overall:.2f}  "
             f"[dim]{result.trajectory.steps} steps, "
             f"{result.trajectory.wall_seconds:.0f}s, "
@@ -311,23 +343,12 @@ def cmd_run(args: argparse.Namespace) -> int:
                 num_ctx=args.num_ctx,
                 host=args.ollama_host,
             )
-        return await run_suite(tasks, agent, config, on_progress=progress)
+        return await run_suite(
+            tasks, agent, config, on_progress=progress, completed=already
+        )
 
-    results = asyncio.run(go())
+    results = done + asyncio.run(go())
 
-    out_dir = Path(args.out) if args.out else _default_out_dir(agent_label)
-    meta = {
-        "agent": agent_label,
-        "judge_model": None if not judge else judge.model,
-        "repeats": config.repeats,
-        "tasks": [t.id for t in tasks],
-        "weights": {"state": config.w_state, "rubric": config.w_rubric},
-        # A benchmark score means nothing without the subset it came from.
-        # "20 of HumanEval's 164" is a different claim from "HumanEval", and
-        # the difference has to survive into the saved results or the number
-        # gets quoted as the second one.
-        "benchmark": bench.summarise(benchmark) | {"ran": len(tasks)},
-    }
     json_path = report_mod.save(results, out_dir, meta, tasks)
     html_path = report_mod.write_html(results, out_dir, meta, tasks)
 
@@ -551,6 +572,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--w-state", type=float, default=0.7)
     p_run.add_argument("--w-rubric", type=float, default=0.3)
     p_run.add_argument("--out", help="Output directory (default: runs/<timestamp>)")
+    p_run.add_argument(
+        "--resume",
+        metavar="DIR",
+        help="Continue an interrupted run in DIR, skipping instances already "
+        "recorded in its journal. Results are journalled as they land, so a "
+        "suite that dies partway costs the run in flight and nothing else.",
+    )
     p_run.add_argument(
         "--gold",
         action="store_true",

@@ -149,6 +149,19 @@ def print_results(results: list[RunResult], console: Console | None = None) -> N
         summary += f"   [yellow]{errored} errored[/yellow]"
     console.print(Panel(summary, expand=False, border_style="dim"))
 
+    # Printed above the failures, not among them. A suite where the scaffold
+    # never engaged is not a suite of low scores — it is a suite of numbers
+    # that measured nothing, and reading it as the former is the whole reason
+    # this exists.
+    suspect = [r for r in results if r.warnings]
+    if suspect:
+        console.print(
+            f"[yellow]{len(suspect)} of {len(results)} runs may not be "
+            f"measuring anything:[/yellow]"
+        )
+        for note in sorted({w for r in suspect for w in r.warnings}):
+            console.print(f"  [yellow]·[/yellow] {note}")
+
     _print_failures(results, console)
 
 
@@ -432,3 +445,94 @@ def write_html(
 ) -> Path:
     """Write the standalone run explorer. See `agenteval.ui` for the design."""
     return ui.write(build_payload(results, meta, tasks), out_dir)
+
+
+# --------------------------------------------------------------------------- #
+# The journal: surviving a run that does not finish
+# --------------------------------------------------------------------------- #
+#
+# `results.json` is written once, at the end. That is fine for five simulated
+# tasks and indefensible for three hundred SWE-bench instances: a suite that
+# dies at hour five loses every result, including the money already spent on
+# them. The journal is the same records appended as they land, one JSON object
+# per line, so a crash costs the run in flight and nothing else.
+
+JOURNAL = "journal.jsonl"
+
+
+class ResumeMismatch(Exception):
+    """The journal was written by a different run than the one resuming it."""
+
+
+def journal_path(out_dir: Path) -> Path:
+    return Path(out_dir) / JOURNAL
+
+
+def open_journal(out_dir: Path, meta: dict[str, Any]) -> Path:
+    """Start (or continue) a journal, recording what produced it."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = journal_path(out_dir)
+    if not path.exists():
+        header = {"kind": "header", "agent": meta.get("agent"),
+                  "benchmark": (meta.get("benchmark") or {}).get("name"),
+                  "repeats": meta.get("repeats")}
+        path.write_text(json.dumps(header) + "\n")
+    return path
+
+
+def append_to_journal(path: Path, result: RunResult) -> None:
+    # Opened and closed per record rather than held: the whole point is to
+    # survive a process that does not get to run its cleanup.
+    with Path(path).open("a") as handle:
+        handle.write(json.dumps({"kind": "run", **result.to_dict()}) + "\n")
+        handle.flush()
+
+
+def read_journal(out_dir: Path, meta: dict[str, Any] | None = None) -> list[RunResult]:
+    """Completed runs from a previous attempt, if any.
+
+    A truncated final line is dropped rather than fatal — it is exactly what a
+    kill mid-write leaves behind, and losing one record is the cost the journal
+    exists to cap.
+    """
+    path = journal_path(out_dir)
+    if not path.exists():
+        return []
+    results: list[RunResult] = []
+    for line in path.read_text().splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("kind") == "header" and meta is not None:
+            _check_resumable(entry, meta)
+        elif entry.get("kind") == "run":
+            results.append(RunResult.from_dict(entry))
+    return results
+
+
+def _check_resumable(header: dict[str, Any], meta: dict[str, Any]) -> None:
+    """Refuse to continue somebody else's run.
+
+    Resuming a Claude suite with a local agent would blend two models into one
+    results file under one name, and nothing downstream could tell.
+    """
+    now = {"agent": meta.get("agent"),
+           "benchmark": (meta.get("benchmark") or {}).get("name")}
+    was = {"agent": header.get("agent"), "benchmark": header.get("benchmark")}
+    differences = [k for k in now if was.get(k) is not None and was[k] != now[k]]
+    if differences:
+        detail = ", ".join(f"{k}: {was[k]!r} -> {now[k]!r}" for k in differences)
+        raise ResumeMismatch(
+            f"this journal was written by a different run ({detail}). Resuming "
+            "would blend them into one results file under one name."
+        )
+
+
+def completed_counts(results: list[RunResult]) -> dict[str, int]:
+    """How many runs of each task are already done."""
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result.task_id] = counts.get(result.task_id, 0) + 1
+    return counts

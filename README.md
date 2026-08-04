@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 649 tests; Docker and egress tests skip if unavailable
+pytest              # 680 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -349,6 +349,54 @@ reason*.
 SWE-bench is the same three methods with a bigger download and one change:
 `image:` becomes per instance rather than shared.
 
+## Long runs
+
+Results are journalled as they land, one JSON object per line, and `results.json`
+is still written at the end:
+
+```bash
+agenteval --benchmark swebench run --agent claude --limit 100   # dies at hour 5
+agenteval --benchmark swebench run --agent claude --limit 100 --resume runs/<dir>
+```
+
+`results.json` used to be written once, at the end. That is fine for five
+simulated tasks and indefensible for three hundred SWE-bench instances: a suite
+that dies partway lost every result, including the money already spent on them.
+A crash now costs the run in flight and nothing else. A torn final line — what a
+kill mid-write actually leaves behind — costs that one record rather than the
+file.
+
+Repeats are counted rather than matched up, because the fourth run of a task is
+not a distinct thing to pair with a saved one; it is one more sample. And a
+journal written by a different agent or benchmark is refused rather than
+continued: blending two models into one results file under one name is a
+mistake nothing downstream could detect.
+
+## When a score is not a measurement
+
+A run that calls no tools scores zero, and zero is an ordinary thing for a weak
+model to score. It is also what you get when the model never had working tools
+at all, and those two are indistinguishable in a results table — which is how a
+scaffold bug gets written up as a capability finding.
+
+So the harness looks for it. If a run makes no tool calls on a task that needed
+them, and its reply text parses as a serialised tool call, that is reported as
+a warning:
+
+```
+1 of 20 runs may not be measuring anything:
+  · the model wrote a 'exec_write_file' call out as text instead of calling it,
+    so this scored zero without the scaffold ever being exercised
+```
+
+Warnings never move a number; they say the number may not mean what it looks
+like. This exists because it happened here: `qwen2.5-coder:14b` answered a
+HumanEval task with a correct `exec_write_file` call serialised as JSON in its
+reply, made no call, and scored 0.00 — no exception, `stop_reason: end_turn`, a
+clean-looking zero. It turned out to emit no tool calls for any tool or prompt
+despite advertising the capability. Without the warning that would have been
+filed as "the coder model is bad at HumanEval".
+
 ## Adding a task
 
 ```
@@ -540,6 +588,7 @@ agenteval run --agent claude --no-judge --fail-under 0.8   # CI gate
 agenteval show runs/<dir> [--task ID] [--full]   # trajectory in the terminal
 agenteval ui runs/<dir>                          # the same run in a browser
 agenteval design                                 # rebuild design specimens
+agenteval run --resume runs/<dir>                 # continue after a crash
 agenteval report runs/<dir>
 agenteval compare runs/<a> runs/<b>
 ```

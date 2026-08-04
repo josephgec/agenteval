@@ -22,6 +22,7 @@ from .exec import Environment, EnvironmentSpec
 from .exec import attach as exec_attach
 from .exec import harvest_into as exec_harvest
 from .registry import ToolSession
+from .scaffold import warnings as scaffold_warnings
 from .tasks import LoadedTask
 from .types import Check, RunResult, Score, Trajectory, Usage
 from .state import World
@@ -211,6 +212,7 @@ async def run_one(
         trajectory=trajectory,
         score=score,
         artifacts=_agent_artifacts(world),
+        warnings=scaffold_warnings(task.spec, trajectory),
         agent_cost_usd=agent_cost,
         judge_cost_usd=judge_cost,
         judge_model=judge_model,
@@ -225,6 +227,7 @@ async def run_suite(
     agent: Agent | AgentFactory,
     config: RunConfig | None = None,
     on_progress: ProgressFn | None = None,
+    completed: dict[str, int] | None = None,
 ) -> list[RunResult]:
     """Run every task, `config.repeats` times each, up to `config.concurrency`.
 
@@ -233,6 +236,11 @@ async def run_suite(
     own reference trajectory, most obviously. That form exists so `--gold` is
     an ordinary suite run rather than a second, sequential code path that
     quietly ignored concurrency and drifted from this one.
+
+    `completed` counts runs an earlier attempt already finished, per task, and
+    is how a resumed suite skips them. Counted rather than listed because
+    repeats of one task are interchangeable measurements — the fourth run of a
+    task is not a distinct thing to be matched up, it is one more sample.
     """
     config = config or RunConfig()
     semaphore = asyncio.Semaphore(config.concurrency)
@@ -247,9 +255,12 @@ async def run_suite(
                 on_progress(task.id, result)
             return result
 
-    jobs: list[Awaitable[RunResult]] = [
-        guarded(task) for task in tasks for _ in range(config.repeats)
-    ]
+    remaining = dict(completed or {})
+    scheduled: list[LoadedTask] = []
+    for task in tasks:
+        already = remaining.get(task.id, 0)
+        scheduled += [task] * max(0, config.repeats - already)
+    jobs: list[Awaitable[RunResult]] = [guarded(task) for task in scheduled]
     # `run_one` is total, so nothing should arrive here as an exception. This
     # is the backstop for the case where something does anyway — including a
     # bug in the progress callback. Losing a whole paid suite to one unexpected
@@ -257,9 +268,7 @@ async def run_suite(
     settled = await asyncio.gather(*jobs, return_exceptions=True)
 
     results: list[RunResult] = []
-    for task, outcome in zip(
-        [t for t in tasks for _ in range(config.repeats)], settled
-    ):
+    for task, outcome in zip(scheduled, settled):
         if isinstance(outcome, BaseException):
             trajectory = Trajectory(task_id=task.id, agent=agent.name)
             trajectory.error = (

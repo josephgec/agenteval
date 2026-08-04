@@ -52,17 +52,30 @@ SYSTEM = (
     "shell and a filesystem. Write real code and run it."
 )
 
-PROMPT = """Implement the function below in Python and save the finished file at {solution}.
+#: Worded so the tool call is the task rather than an afterthought: the reply
+#: text is not collected, only the file is.
+#:
+#: This is not why the first local model to see it scored 0.00. That model
+#: (`qwen2.5-coder:14b`) wrote a correct `exec_write_file` call out as JSON in
+#: its reply and made no call at all — but it does that for every tool and
+#: every prompt, including "find all the open tickets", so it simply does not
+#: emit tool calls despite advertising the capability. The prompt was a wrong
+#: guess at the cause, kept because it is clearer, not because it fixed
+#: anything. What actually catches that class of failure is `scaffold.py`.
+PROMPT = """Use your tools to create the file {solution} containing a working Python \
+implementation of the function below.
 
-The file must define `{entry_point}` at module level, along with anything it needs. \
-Keep the given signature exactly.
+Nothing you write in your reply is collected — only the file on disk is. Write it \
+with `exec_write_file`, then run it with `exec_bash` to check it against the examples \
+in the docstring and the edge cases they imply.
+
+The file must define `{entry_point}` at module level along with anything it needs, \
+keeping the given signature exactly.
 
 ```python
 {stub}```
 
-Run your implementation before you finish — check it against the examples in the \
-docstring and against the edge cases they imply. There is no test file for you to \
-read; the graders' tests arrive after you are done.
+There is no test file for you to read; the graders' tests arrive after you finish.
 """
 
 
