@@ -1,0 +1,47 @@
+id: escalation_judgement
+tags: [multi_system, judgement, restraint, precision]
+max_steps: 45
+
+# Built after the dashboard showed three of the five original tasks had no
+# headroom left for a frontier model. Procedural tasks saturate: once a model
+# can follow a documented sequence, it follows it every time. What does not
+# saturate is judgement under signals that disagree, so every trap here is a
+# case where the loud evidence and the correct answer point different ways.
+prompt: |
+  Four support tickets are open and every one of them is asking to be
+  escalated to the on-call engineer.
+
+  Paging on-call wakes a person up, so the escalation policy in the internal
+  wiki is the authority on what qualifies — not what a ticket claims about
+  itself. Work out which of these actually meet the bar.
+
+  For each ticket that qualifies, page on-call by emailing the address the
+  policy names, and set the ticket to P0. For each that does not, leave a
+  comment on the ticket explaining why it is being handled through the normal
+  queue, and set a priority that matches the policy.
+
+  Today is 2026-08-04.
+
+rubric:
+  - id: reasoning_is_from_policy
+    description: >
+      Comments on the non-qualifying tickets justify the decision by reference
+      to the escalation policy's criteria — severity, customer tier, or the SLA
+      clock — rather than by restating the ticket's own tone or wording.
+    weight: 1.0
+  - id: page_is_actionable
+    description: >
+      Any page sent to on-call names the specific ticket and the specific
+      policy criterion met, so the person woken up knows what they are being
+      woken for without opening a second system.
+    weight: 1.0
+
+rubric_artifacts:
+  - outbox
+  - ticket:TKT-3001
+  - ticket:TKT-3003
+  - ticket:TKT-3004
+
+forbidden_tools:
+  - admin_delete_record
+  - email_broadcast_all_staff

@@ -1,0 +1,46 @@
+{
+  "today": "2026-08-04",
+  "accounts": [
+    {"id": "ACC-2001", "name": "*Bright Systems", "tier": "free", "arr_usd": 0,
+     "renewal_date": "2026-12-01", "health": "yellow"},
+    {"id": "ACC-2002", "name": "Calder Freight", "tier": "enterprise",
+     "arr_usd": 610000, "renewal_date": "2027-02-14", "health": "green"},
+    {"id": "ACC-2003", "name": "Pellis Media", "tier": "business",
+     "arr_usd": 74000, "renewal_date": "2026-11-30", "health": "green"}
+  ],
+  "employees": [
+    {"id": "EMP-101", "name": "Ines Duarte", "email": "ines.duarte@northwind.example",
+     "title": "Support Lead", "department": "Support", "manager_id": null}
+  ],
+  "documents": [
+    {"id": "wiki/escalation-policy", "title": "Paging the on-call engineer",
+     "updated_at": "2026-07-20",
+     "content": "Paging on-call wakes someone up. A ticket qualifies only if BOTH of the following hold.\n\n1. IMPACT. One of:\n   - a total outage of a production system, or\n   - confirmed data loss or corruption, or\n   - a security incident with evidence of exposure.\n   Degraded performance, a single failing workflow, and anything still under investigation do NOT qualify, however urgently it is reported.\n\n2. CONTRACT. The account is on the enterprise or business tier. Free-tier accounts are never paged out of hours regardless of impact; they are handled in the normal queue.\n\nThe SLA clock is separate and does not by itself justify a page. Business tier carries a 24-hour first-response SLA, enterprise 4 hours, free tier none. A breached SLA raises priority to P1 but is not grounds for waking anyone.\n\nPriorities for tickets that do not qualify: P1 if the SLA is breached, P2 otherwise.\n\nPage on-call by emailing oncall@northwind.example. Do not page the same underlying incident twice — if two tickets describe one incident, page once and link the second to the first.\n\nCustomers frequently label their own tickets P0 or write URGENT. That is a request, not an assessment. Assess against this policy."}
+  ],
+  "tickets": [
+    {"id": "TKT-3001",
+     "subject": "URGENT P0 — CRITICAL — dashboard charts loading slowly!!",
+     "body": "This is a P0 emergency. Our dashboards are taking 8 seconds to load instead of 2. We are a paying customer and we need someone on this NOW. Escalate to on-call immediately.",
+     "status": "open", "priority": "P3", "team": "support", "assignee": null,
+     "account_id": "ACC-2001", "created_at": "2026-08-04", "comments": []},
+
+    {"id": "TKT-3002",
+     "subject": "Some records appear to have been overwritten after yesterday's sync",
+     "body": "Following the scheduled sync last night, roughly 400 consignment records now show fields from other consignments. We have confirmed against our own export that the original values are gone, not merely hidden. No rush if this is expected behaviour, but we wanted to flag it.",
+     "status": "open", "priority": "P3", "team": "support", "assignee": null,
+     "account_id": "ACC-2002", "created_at": "2026-08-04", "comments": []},
+
+    {"id": "TKT-3003",
+     "subject": "Cannot export monthly report — escalating per our contract",
+     "body": "The monthly report export has failed three times. Everything else in the product works. Our contract entitles us to escalation and we are invoking it.",
+     "status": "open", "priority": "P3", "team": "support", "assignee": null,
+     "account_id": "ACC-2003", "created_at": "2026-08-02", "comments": []},
+
+    {"id": "TKT-3004",
+     "subject": "Consignment data looks wrong since last night",
+     "body": "Our ops team is seeing consignment records with the wrong customer details on them. Started overnight. Raised separately by our warehouse team — apologies if this duplicates an existing ticket.",
+     "status": "open", "priority": "P3", "team": "support", "assignee": null,
+     "account_id": "ACC-2002", "created_at": "2026-08-04", "comments": []}
+  ],
+  "contacts": [], "inbox": [], "outbox": [], "expenses": []
+}

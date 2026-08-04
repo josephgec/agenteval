@@ -57,12 +57,25 @@ class Checks:
         return self
 
     def equals(
-        self, name: str, actual: Any, expected: Any, weight: float = 1.0
+        self,
+        name: str,
+        actual: Any,
+        expected: Any,
+        weight: float = 1.0,
+        why: str = "",
     ) -> Checks:
+        """`why` explains what makes the expected value the right one.
+
+        "expected 'P1', got 'P0'" says what happened; "raised 2026-08-02 on
+        business tier, whose SLA is 24 hours" says why P1 was correct. The
+        second is what makes a failed run readable without opening the task,
+        and it is knowledge the task has and the check cannot derive.
+        """
+        detail = f"expected {expected!r}, got {actual!r}"
         return self.add(
             name,
             actual == expected,
-            detail=f"expected {expected!r}, got {actual!r}",
+            detail=f"{detail} — {why}" if why else detail,
             weight=weight,
         )
 
