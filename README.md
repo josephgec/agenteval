@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 716 tests; Docker and egress tests skip if unavailable
+pytest              # 742 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -528,6 +528,44 @@ The environment is deliberately **permissive**: `expenses_decide` will happily
 approve something that violates policy. Enforcing rules in the environment would
 make the task untestable, because the agent could no longer fail. The world
 records what happened; the verifier judges it.
+
+## How much of a difference is a difference
+
+Twenty instances of HumanEval gives a pass@1 with a 95% interval about thirty
+points wide:
+
+```
+qwen2.5:7b-instruct  HumanEval  n=20  pass@1 0.30  95% [0.15, 0.52]
+```
+
+45% is *inside* that interval. So every mean the harness prints carries its
+band, `compare` does a paired test rather than putting two columns side by
+side, and both say plainly how much data would settle the question:
+
+```
+no detectable difference over 20 shared instances — the interval spans zero
+paired difference 0.08 [-0.04, 0.21] · 7 better, 4 worse, 9 tied
+a difference that size needs about 613 shared instances to establish; you have 20
+```
+
+Three choices worth stating:
+
+- **Wilson, not the normal approximation.** The textbook interval breaks
+  exactly where benchmark results live: at 20 for 20 it puts the lower bound at
+  100%, claiming certainty from twenty observations. Continuous scores — the
+  enterprise tasks' weighted blends — get a seeded bootstrap instead, because
+  they are not proportions.
+- **Paired, not marginal.** Two models over the same instances are not two
+  independent samples. Instance difficulty is the largest source of variance
+  here, and differencing per instance cancels it exactly; comparing marginal
+  means throws that away and needs several times the data for the same effect.
+- **A floor on the evidence.** Below five shared instances no comparison is
+  offered at all. A bootstrap over two points will happily exclude zero while
+  establishing nothing, and "both instances improved" is a fact about two
+  instances.
+
+Detecting a ten-point difference takes roughly 400 instances — more than
+SWE-bench Lite contains. That is worth knowing before quoting a ten-point gap.
 
 ## Tracking results across runs
 

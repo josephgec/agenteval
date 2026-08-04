@@ -20,6 +20,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from . import ui
+from . import stats
 from .types import RunResult
 
 
@@ -89,7 +90,7 @@ def aggregate(results: list[RunResult]) -> dict[str, dict[str, Any]]:
 
 def print_results(results: list[RunResult], console: Console | None = None) -> None:
     console = console or Console()
-    stats = aggregate(results)
+    per_task = aggregate(results)
 
     table = Table(title="Results by task", header_style="bold", expand=False)
     table.add_column("task")
@@ -103,7 +104,7 @@ def print_results(results: list[RunResult], console: Console | None = None) -> N
     table.add_column("sec", justify="right")
     table.add_column("cost", justify="right")
 
-    for task_id, s in stats.items():
+    for task_id, s in per_task.items():
         mean = s["overall_mean"]
         safe_cell = (
             "[green]ok[/green]"
@@ -126,14 +127,20 @@ def print_results(results: list[RunResult], console: Console | None = None) -> N
     console.print()
     console.print(table)
 
-    overall = statistics.fmean([r.score.overall for r in results]) if results else 0.0
+    scores = [r.score.overall for r in results]
+    overall = statistics.fmean(scores) if results else 0.0
+    band = stats.interval(scores)
     total_cost = sum(r.cost_usd for r in results)
     judge_cost = sum(r.judge_cost_usd for r in results)
     unsafe = sum(1 for r in results if not r.score.safe)
     errored = sum(1 for r in results if r.status != "ok")
     summary = (
         f"[bold]{len(results)}[/bold] runs   "
-        f"mean [bold {_grade_color(overall)}]{overall:.3f}[/bold {_grade_color(overall)}]   "
+        f"mean [bold {_grade_color(overall)}]{overall:.3f}[/bold {_grade_color(overall)}] "
+        # The interval, not just the point. At n=20 a pass rate carries a band
+        # some thirty points wide, and a bare mean invites a conclusion the
+        # sample cannot support.
+        f"[dim]95% [{band.low:.2f}, {band.high:.2f}][/dim]   "
         f"cost [bold]${total_cost:.3f}[/bold]"
     )
     if judge_cost:
@@ -148,6 +155,12 @@ def print_results(results: list[RunResult], console: Console | None = None) -> N
     if errored:
         summary += f"   [yellow]{errored} errored[/yellow]"
     console.print(Panel(summary, expand=False, border_style="dim"))
+    if band.n > 1 and band.width > 0.2:
+        console.print(
+            f"[dim]That interval is {band.width:.0%} wide. Detecting a 10-point "
+            f"difference against another model needs about "
+            f"{stats.sample_size_for(0.10)} instances; you ran {band.n}.[/dim]"
+        )
 
     # Printed above the failures, not among them. A suite where the scaffold
     # never engaged is not a suite of low scores — it is a suite of numbers
@@ -430,6 +443,38 @@ def print_comparison(
         f"[dim]{left_label}: ${left['meta']['total_cost_usd']:.3f}   "
         f"{right_label}: ${right['meta']['total_cost_usd']:.3f}[/dim]"
     )
+
+    # What makes this a comparison rather than two columns beside each other.
+    # Marginal means throw away the pairing, and instance difficulty dominates
+    # the variance here — differencing per instance removes it exactly, because
+    # both models faced the same problem.
+    outcome = stats.compare(
+        dict(left_scores), dict(right_scores), left_label, right_label
+    )
+    console.print()
+    console.print(
+        (f"[green]{outcome.verdict()}[/green]" if outcome.decisive
+         else f"[yellow]{outcome.verdict()}[/yellow]")
+    )
+    if outcome.paired:
+        console.print(
+            f"[dim]paired difference {outcome.difference.render()} · "
+            f"{outcome.wins} better, {outcome.losses} worse, "
+            f"{outcome.ties} tied[/dim]"
+        )
+        if not outcome.decisive:
+            needed = stats.sample_size_for(
+                max(0.05, abs(outcome.difference.point))
+            )
+            console.print(
+                f"[dim]a difference that size needs about {needed} shared "
+                f"instances to establish; you have {outcome.paired}.[/dim]"
+            )
+    if outcome.unpaired:
+        console.print(
+            f"[dim]{outcome.unpaired} tasks were run by only one side and are "
+            f"excluded — only shared instances carry information.[/dim]"
+        )
 
 
 # --------------------------------------------------------------------------- #

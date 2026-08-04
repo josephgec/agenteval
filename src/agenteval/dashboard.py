@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import stats
 from .ui import STYLESHEET
 
 DEFAULT_ROOT = Path("runs")
@@ -143,6 +144,11 @@ def leaderboard(records: list[RunRecord]) -> list[dict[str, Any]]:
             "tasks": len(tasks),
             "mean": statistics.fmean(scores) if scores else 0.0,
             "stdev": statistics.stdev(scores) if len(scores) > 1 else None,
+            # The band the evidence supports, not just the point. Two rows a
+            # few points apart with overlapping intervals are not ranked, and
+            # a table that shows only the means says otherwise.
+            "low": stats.interval(scores).low if scores else 0.0,
+            "high": stats.interval(scores).high if scores else 0.0,
             "cost": sum(run.cost for run in runs),
             "warnings": sum(run.warnings for run in runs),
             "errors": sum(run.errors for run in runs),
@@ -222,6 +228,54 @@ def by_task(records: list[RunRecord]) -> list[dict[str, Any]]:
     return rows
 
 
+def head_to_head(records: list[RunRecord]) -> list[dict[str, Any]]:
+    """Every pair of models that share a benchmark, compared on shared tasks.
+
+    Paired rather than by marginal means: instance difficulty dominates the
+    variance, and both models faced the same instances, so differencing per
+    instance removes it exactly.
+    """
+    scores: dict[tuple[str, str], dict[str, list[float]]] = {}
+    for record in records:
+        if not is_model(record.agent):
+            continue
+        bucket = scores.setdefault((record.benchmark, record.agent), {})
+        for result in record.results:
+            bucket.setdefault(result["task_id"], []).append(
+                result["score"]["overall"]
+            )
+
+    rows = []
+    benchmarks = sorted({b for b, _ in scores})
+    for benchmark in benchmarks:
+        agents = sorted(a for b, a in scores if b == benchmark)
+        for i, left in enumerate(agents):
+            for right in agents[i + 1:]:
+                outcome = stats.compare(
+                    scores[(benchmark, left)], scores[(benchmark, right)],
+                    left, right,
+                )
+                if not outcome.paired:
+                    continue
+                rows.append({
+                    "benchmark": benchmark,
+                    "left": left, "right": right,
+                    "paired": outcome.paired,
+                    "delta": outcome.difference.point,
+                    "low": outcome.difference.low,
+                    "high": outcome.difference.high,
+                    "wins": outcome.wins, "losses": outcome.losses,
+                    "ties": outcome.ties,
+                    "decisive": outcome.decisive,
+                    "verdict": outcome.verdict(),
+                    "needed": stats.sample_size_for(
+                        max(0.05, abs(outcome.difference.point))
+                    ),
+                })
+    rows.sort(key=lambda r: (-abs(r["delta"]), r["benchmark"]))
+    return rows
+
+
 def build(root: Path | str = DEFAULT_ROOT) -> dict[str, Any]:
     records = collect(root)
     agents = sorted({r.agent for r in records})
@@ -239,6 +293,7 @@ def build(root: Path | str = DEFAULT_ROOT) -> dict[str, Any]:
             for r in records
         ],
         "leaderboard": leaderboard(records),
+        "head_to_head": head_to_head(records),
         "tasks": by_task(records),
         "agents": [a for a in agents if is_model(a)],
         "reference_agent": REFERENCE_AGENT,
@@ -345,6 +400,13 @@ __EXTRA__
       pair. A subset and a full run are different claims — the task count says
       which.</p>
     <div class="scroll"><table id="board"></table></div>
+  </section>
+  <section class="section" id="h2h-section">
+    <span class="eyebrow">Head to head</span>
+    <p class="note-row">Paired over the instances both models attempted.
+      Comparing marginal means throws away the pairing, and instance difficulty
+      is the largest source of variance here.</p>
+    <div class="scroll"><table id="h2h"></table></div>
   </section>
   <section class="section">
     <span class="eyebrow">Every run</span>
@@ -457,7 +519,8 @@ drawTasks();
 /* ---- leaderboard ------------------------------------------------------ */
 document.getElementById('board').innerHTML =
   `<thead><tr><th>agent</th><th>benchmark</th>
-   <th style="text-align:right">all-time</th><th style="text-align:right">±</th>
+   <th style="text-align:right">all-time</th>
+   <th style="text-align:right">95%</th>
    <th style="text-align:right">latest</th>
    <th style="text-align:right">tasks</th><th style="text-align:right">n</th>
    <th style="text-align:right">runs</th><th style="text-align:right">cost</th>
@@ -466,7 +529,7 @@ document.getElementById('board').innerHTML =
     <td class="agent">${esc(r.agent)}</td>
     <td><span class="tag">${esc(r.benchmark)}</span></td>` +
     scoreCell(r.mean) +
-    `<td class="num subtle">${r.stdev === null ? '—' : r.stdev.toFixed(2)}</td>` +
+    `<td class="num subtle">[${r.low.toFixed(2)}, ${r.high.toFixed(2)}]</td>` +
     scoreCell(r.latest_mean) +
     `<td class="num">${r.tasks}</td>
      <td class="num">${r.n}</td>
@@ -479,6 +542,31 @@ document.getElementById('board').innerHTML =
      ].filter(Boolean).join(' ') || '<span class="subtle">—</span>'}</td>
      <td class="subtle">${when(r.latest)}</td></tr>`).join('') +
   `</tbody>`;
+
+/* ---- head to head ----------------------------------------------------- */
+const h2h = DATA.head_to_head || [];
+if (!h2h.length) {
+  document.getElementById('h2h-section').style.display = 'none';
+} else {
+  document.getElementById('h2h').innerHTML =
+    `<thead><tr><th>benchmark</th><th>models</th>
+     <th style="text-align:right">difference</th>
+     <th style="text-align:right">95%</th>
+     <th style="text-align:right">shared</th>
+     <th style="text-align:right">w / l / t</th>
+     <th>verdict</th></tr></thead><tbody>` +
+    h2h.map(r => `<tr>
+      <td><span class="tag">${esc(r.benchmark)}</span></td>
+      <td class="agent">${esc(r.left)} <span class="subtle">vs</span> ${esc(r.right)}</td>
+      <td class="num">${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(2)}</td>
+      <td class="num subtle">[${r.low.toFixed(2)}, ${r.high.toFixed(2)}]</td>
+      <td class="num">${r.paired}</td>
+      <td class="num subtle">${r.wins} / ${r.losses} / ${r.ties}</td>
+      <td class="${r.decisive ? 'pass' : 'subtle'}">${esc(r.verdict)}${
+        r.decisive ? '' :
+        ` <span class="subtle">(≈${r.needed} shared instances would settle it)</span>`
+      }</td></tr>`).join('') + `</tbody>`;
+}
 
 /* ---- every run -------------------------------------------------------- */
 document.getElementById('runs').innerHTML =
