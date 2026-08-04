@@ -260,6 +260,18 @@ def test_a_run_that_called_nothing_at_all_is_still_flagged():
     assert "nothing was measured" in scaffold_warnings(spec, trajectory)[0]
 
 
+def test_an_empty_response_is_the_clearest_case_of_all():
+    """An earlier version of this required some text to complain about, and so
+    let through the one case with no ambiguity in it. Observed on 8 of 20
+    HumanEval runs: one turn, end_turn, no content, no calls, status ok, scored
+    0.00. There is no reading of that as a capability result."""
+    spec = TaskSpec(id="t", prompt="p", environment={"image": "x"})
+    trajectory = Trajectory("t", "a")  # no final_text, no messages
+    note = scaffold_warnings(spec, trajectory)[0]
+    assert "empty response" in note
+    assert "failed request, not a score" in note
+
+
 def test_a_run_that_used_its_tools_is_not_flagged():
     from agenteval.types import ToolCall
 

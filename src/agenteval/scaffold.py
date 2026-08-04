@@ -77,7 +77,17 @@ def warnings(spec: TaskSpec, trajectory: Trajectory) -> list[str]:
             "the model or the prompt is not driving tool use, and the score is "
             "not a capability measurement"
         )
-    elif trajectory.final_text:
+    elif not trajectory.final_text and not trajectory.messages:
+        # The emptiest case, and the one an earlier version of this function
+        # let through by requiring some text to complain about. Observed on 8
+        # of 20 HumanEval runs: one turn, `end_turn`, no content, no calls,
+        # status ok, scored 0.00. There is no reading of that as a capability
+        # result — the model said nothing at all.
+        notes.append(
+            "the model returned an empty response and called nothing, so this "
+            "run measured nothing at all — it is a failed request, not a score"
+        )
+    else:
         notes.append(
             "the run finished without calling a single tool, which for this "
             "task means nothing was measured"

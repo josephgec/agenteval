@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 680 tests; Docker and egress tests skip if unavailable
+pytest              # 694 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -372,6 +372,32 @@ journal written by a different agent or benchmark is refused rather than
 continued: blending two models into one results file under one name is a
 mistake nothing downstream could detect.
 
+## Checking a model before spending a run on it
+
+```bash
+agenteval probe                            # every model Ollama has
+agenteval probe --model qwen3.5:9b
+```
+
+```
+model                 short argument   file as argument   verdict
+qwen3.5:9b                 yes               yes          calls tools
+lfm2.5:8b                  yes               yes          calls tools
+qwen2.5:7b-instruct        yes               yes          calls tools
+qwen2.5-coder:14b          no                no           answered in text instead
+```
+
+Advertising tool support and emitting tool calls are different things.
+`qwen2.5-coder:14b` lists `tools` in its Ollama capabilities and emits none —
+for any tool, on any prompt. Finding that out cost twenty HumanEval instances
+and forty minutes; the probe costs two requests.
+
+Two probes, because "call a search tool with a short argument" and "hand over a
+file's worth of content in an argument" are different capabilities and this
+harness leans on the second. Both must pass: a model that manages the first and
+not the second sails through the enterprise tasks and fails every code
+benchmark, which is worse than failing outright because it looks like a finding.
+
 ## When a score is not a measurement
 
 A run that calls no tools scores zero, and zero is an ordinary thing for a weak
@@ -577,6 +603,7 @@ design there and syncing back means updating the corresponding layer in
 ## Commands
 
 ```bash
+agenteval probe                                   # do local models call tools?
 agenteval benchmarks                              # what can supply tasks
 agenteval list
 agenteval run --gold                              # offline, free

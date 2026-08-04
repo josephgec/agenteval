@@ -169,6 +169,52 @@ def cmd_benchmarks(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_probe(args: argparse.Namespace) -> int:
+    """Check that a local model emits tool calls before spending a run on it.
+
+    Advertising tool support and emitting tool calls are different things, and
+    the gap between them costs a whole suite of zeroes that look like a weak
+    model rather than a broken one.
+    """
+    from . import probe as probe_mod
+
+    models = args.model or probe_mod.available_models(args.ollama_host)
+    if not models:
+        console.print(
+            f"[red]No models to probe.[/red] Is Ollama running at "
+            f"{args.ollama_host}? Name models explicitly with --model."
+        )
+        return 2
+
+    results = probe_mod.run(models, host=args.ollama_host)
+    table = Table(title="tool calling", header_style="bold")
+    table.add_column("model")
+    for label, *_ in probe_mod.PROBES:
+        table.add_column(label, justify="center")
+    table.add_column("verdict")
+    for result in results:
+        marks = [
+            "[green]yes[/green]" if result.called.get(label) else "[red]no[/red]"
+            for label, *_ in probe_mod.PROBES
+        ]
+        table.add_row(
+            result.model, *marks,
+            ("[green]" if result.usable else "[red]") + result.summary()
+            + ("[/green]" if result.usable else "[/red]"),
+        )
+    console.print()
+    console.print(table)
+
+    unusable = [r for r in results if not r.usable]
+    if unusable:
+        console.print(
+            "[dim]A model that answers in text scores zero on every task here, "
+            "and that zero is indistinguishable from a weak model doing "
+            "badly.[/dim]"
+        )
+    return 1 if unusable and len(unusable) == len(results) else 0
+
+
 def cmd_sandbox(args: argparse.Namespace) -> int:
     box = sandbox_mod.Sandbox()
     if args.action == "build":
@@ -506,6 +552,16 @@ def build_parser() -> argparse.ArgumentParser:
         "benchmarks", help="List the benchmarks that can supply tasks"
     )
     p_benchmarks.set_defaults(func=cmd_benchmarks)
+
+    p_probe = sub.add_parser(
+        "probe", help="Check that local models actually emit tool calls"
+    )
+    p_probe.add_argument(
+        "--model", action="append",
+        help="Model to probe (repeatable). Default: every model Ollama has.",
+    )
+    p_probe.add_argument("--ollama-host", default="http://localhost:11434")
+    p_probe.set_defaults(func=cmd_probe)
 
     p_list = sub.add_parser("list", help="List available tasks")
     p_list.add_argument("--task", action="append", help="Only this instance")
