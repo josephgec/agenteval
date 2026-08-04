@@ -36,6 +36,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from ..exec import EXEC_TOOLS
 from ..exec.environment import DEFAULT_IMAGE, Environment
 from ..state import World
 from ..tasks import LoadedTask
@@ -158,9 +159,7 @@ class HumanEvalBenchmark:
                 # prompt, and everything it must not see arrives at grading.
                 "collect": [SOLUTION],
             },
-            allowed_tools=[
-                "exec_bash", "exec_write_file", "exec_read_file", "exec_list_files"
-            ],
+            allowed_tools=list(EXEC_TOOLS),
             max_steps=20,
             tags=["code", "benchmark", "humaneval"],
         )

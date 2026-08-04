@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 742 tests; Docker and egress tests skip if unavailable
+pytest              # 768 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -148,6 +148,39 @@ unchanged.
 
 **The image is the seam.** Pointing `image:` at a downloaded benchmark's own
 container is what keeps adding one from being a rewrite.
+
+## Editing, not rewriting
+
+`exec_write_file` makes an agent reproduce a whole file to change one line,
+which on a real repository is where most of the score goes. So the exec tools
+are:
+
+| | |
+|---|---|
+| `exec_bash` | run a command; state persists between calls |
+| `exec_write_file` | create or replace a whole file |
+| `exec_edit_file` | replace an exact snippet |
+| `exec_read_file` | whole file, or `start_line` / `line_count` |
+| `exec_search` | matching lines with file and line number |
+| `exec_list_files` | directory listing |
+
+Almost all of `exec_edit_file`'s value is in the two edits it **refuses**.
+
+**Not found is an error.** A silent no-op is the most expensive failure
+available here: the agent believes it made a change, every later step reasons
+from that belief, and the run ends with a confident summary of work that never
+happened. `str.replace` returning the string unchanged did exactly that to a
+change made while building this.
+
+**Ambiguous is an error.** Replacing "the first occurrence" of a snippet that
+appears three times silently edits the wrong one — worse than not editing,
+because it also breaks something that was working.
+
+`exec_read_file` returns content **without line numbers**, deliberately: an
+agent edits by quoting back an exact snippet of what it read, and numbers woven
+through that text turn every edit into a de-numbering exercise. `exec_search`
+does include them, because that output is for navigating to a place rather than
+copying text out of.
 
 ## Monitored egress
 

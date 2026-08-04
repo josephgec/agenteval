@@ -44,6 +44,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from ..exec import EXEC_TOOLS
 from ..exec.environment import Environment
 from ..state import World
 from ..tasks import LoadedTask
@@ -219,9 +220,7 @@ class SWEBenchBenchmark:
                 "timeout": 1800.0,
                 "lifetime": 5400.0,
             },
-            allowed_tools=[
-                "exec_bash", "exec_write_file", "exec_read_file", "exec_list_files"
-            ],
+            allowed_tools=list(EXEC_TOOLS),
             max_steps=60,
             tags=["code", "benchmark", "swebench", instance["repo"]],
         )

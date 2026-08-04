@@ -250,9 +250,11 @@ def test_nothing_is_seeded_into_the_container(humaneval):
 def test_only_the_execution_tools_are_offered(humaneval):
     """A HumanEval instance has no CRM to search. Offering the simulated tools
     would spend the step budget teaching it what is irrelevant."""
-    assert humaneval.load("HumanEval/0").spec.allowed_tools == [
-        "exec_bash", "exec_write_file", "exec_read_file", "exec_list_files"
-    ]
+    from agenteval.exec import EXEC_TOOLS
+
+    allowed = humaneval.load("HumanEval/0").spec.allowed_tools
+    assert allowed == list(EXEC_TOOLS)
+    assert not [t for t in allowed if not t.startswith("exec_")]
 
 
 def test_grading_needs_the_live_container(humaneval):
