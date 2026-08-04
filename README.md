@@ -102,7 +102,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 773 tests; Docker and egress tests skip if unavailable
+pytest              # 778 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -443,23 +443,34 @@ agenteval probe --model qwen3.5:9b
 ```
 
 ```
-model                 short argument   file as argument   verdict
-qwen3.5:9b                 yes               yes          calls tools
-lfm2.5:8b                  yes               yes          calls tools
-qwen2.5:7b-instruct        yes               yes          calls tools
-qwen2.5-coder:14b          no                no           answered in text instead
+model                 short arg   file as arg   keeps going   verdict
+qwen3.5:9b               yes          yes          yes        calls tools
+qwen2.5:7b-instruct      yes          yes          yes        calls tools
+lfm2.5:8b                yes          yes          no         answered in text
+qwen2.5-coder:14b        no           no           no         answered in text
 ```
 
 Advertising tool support and emitting tool calls are different things.
 `qwen2.5-coder:14b` lists `tools` in its Ollama capabilities and emits none —
 for any tool, on any prompt. Finding that out cost twenty HumanEval instances
-and forty minutes; the probe costs two requests.
+and forty minutes; the probe costs four requests.
 
-Two probes, because "call a search tool with a short argument" and "hand over a
-file's worth of content in an argument" are different capabilities and this
-harness leans on the second. Both must pass: a model that manages the first and
-not the second sails through the enterprise tasks and fails every code
-benchmark, which is worse than failing outright because it looks like a finding.
+Three probes, and each exists because the previous set passed a model that then
+failed:
+
+- **a short argument** — the easy case
+- **a file as an argument** — a different capability, and the one this harness
+  leans on hardest. A model that manages the first and not the second sails
+  through the enterprise tasks and fails every code benchmark, which is worse
+  than failing outright because it reads as a finding.
+- **keeps going after a result** — added after `lfm2.5:8b` passed both of the
+  above and then scored **0.00 across twenty consecutive instances**, half of
+  them without emitting a single tool call. A model can make one clean call and
+  stop driving the loop the moment tool results come back, and no amount of
+  single-turn evidence sees that. This probe answers the first call the way the
+  real loop does and asks for a dependent second one.
+
+All three must pass.
 
 ## When a score is not a measurement
 

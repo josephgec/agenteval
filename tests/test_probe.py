@@ -26,7 +26,13 @@ def ollama(monkeypatch):
     """Install a fake Ollama whose behaviour a test chooses per tool."""
     def install(behaviour):
         def handler(payload):
-            tool = payload["tools"][0]["function"]["name"]
+            # The continuation probe sends two tools and, on its second turn,
+            # a transcript that already contains a tool result. Answering with
+            # tools[0] there would return a write call where the probe is
+            # looking for exec_bash, and every model would fail it.
+            answered = any(m["role"] == "tool" for m in payload["messages"])
+            tool = ("exec_bash" if answered
+                    else payload["tools"][0]["function"]["name"])
             if behaviour(tool):
                 return {"message": {"role": "assistant", "content": "",
                                     "tool_calls": [{"function": {
@@ -75,17 +81,19 @@ def test_calling_only_the_easy_tool_is_still_a_failure(ollama):
     result = probe_mod.run(["half-works"])[0]
     assert not result.usable
     assert "exec_write_file" in result.summary()
-    assert result.called == {"short argument": True, "file as argument": False}
+    assert result.called["short argument"] is True
+    assert result.called["file as argument"] is False
 
 
-def test_both_shapes_are_probed(ollama):
-    """One short argument and one whole-file argument, because they are
-    different capabilities and this harness leans on the second."""
+def test_every_shape_that_comes_apart_is_probed(ollama):
+    """Three capabilities that are genuinely separate: a short argument, a
+    file's worth of content as an argument, and continuing to drive the loop
+    once results start coming back. Each was added because the previous set
+    passed a model that then failed."""
     ollama(lambda tool: True)
     assert set(probe_mod.run(["m"])[0].called) == {
-        "short argument", "file as argument"
+        "short argument", "file as argument", probe_mod.CONTINUES
     }
-    assert len(probe_mod.PROBES) == 2
 
 
 def test_the_text_reply_is_kept_for_reading(ollama):
@@ -177,3 +185,108 @@ def test_listing_models_survives_ollama_being_down(monkeypatch):
 
     monkeypatch.setattr(probe_mod.httpx, "get", refuse)
     assert probe_mod.available_models() == []
+
+
+# --------------------------------------------------------------------------- #
+# Keeping going after a result
+# --------------------------------------------------------------------------- #
+#
+# Added after lfm2.5:8b passed both single-turn probes and then scored zero
+# across twenty benchmark instances, half of them without emitting a tool call
+# at all. One turn of evidence was not enough.
+
+
+def _conversation(handler):
+    """A fake Ollama that answers based on how many turns have happened."""
+    import json as _json
+
+    turns = {"n": 0}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        payload = _json.loads(request.content)
+        # The continuation probe is the only one that sends two tools.
+        multiturn = len(payload["tools"]) == 2
+        if multiturn:
+            turns["n"] += 1
+        return httpx.Response(200, json=handler(payload, turns["n"], multiturn))
+
+    return httpx.MockTransport(respond)
+
+
+def _install(monkeypatch, handler):
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        probe_mod.httpx, "AsyncClient",
+        lambda *a, **k: real(transport=_conversation(handler)),
+    )
+
+
+def _tool_call(name):
+    return {"message": {"role": "assistant", "content": "",
+                        "tool_calls": [{"function": {"name": name,
+                                                     "arguments": {}}}]}}
+
+
+def _text(body):
+    return {"message": {"role": "assistant", "content": body}}
+
+
+def test_a_model_that_stops_driving_the_loop_is_caught(monkeypatch):
+    """The lfm2.5 failure exactly: a clean first call, then narration."""
+    def handler(payload, turn, multiturn):
+        if multiturn and turn == 2:
+            return _text("The file has been written. Next you should run it.")
+        return _tool_call(payload["tools"][0]["function"]["name"])
+
+    _install(monkeypatch, handler)
+    result = probe_mod.run(["stops-after-one"])[0]
+    assert result.called[probe_mod.CONTINUES] is False
+    assert not result.usable
+    assert "a second tool after a result" in result.summary()
+
+
+def test_a_model_that_keeps_going_passes(monkeypatch):
+    def handler(payload, turn, multiturn):
+        if multiturn and turn == 2:
+            return _tool_call("exec_bash")
+        return _tool_call(payload["tools"][0]["function"]["name"])
+
+    _install(monkeypatch, handler)
+    result = probe_mod.run(["keeps-going"])[0]
+    assert result.called[probe_mod.CONTINUES] is True
+    assert result.usable
+
+
+def test_a_model_that_never_starts_fails_the_continuation_too(monkeypatch):
+    """No first call means there is nothing to continue from, and that is a
+    failure rather than a skipped probe."""
+    _install(monkeypatch, lambda payload, turn, multiturn: _text("{...}"))
+    result = probe_mod.run(["never-calls"])[0]
+    assert result.called[probe_mod.CONTINUES] is False
+
+
+def test_the_narration_is_kept_for_reading(monkeypatch):
+    def handler(payload, turn, multiturn):
+        if multiturn and turn == 2:
+            return _text("You should now run the file yourself.")
+        return _tool_call(payload["tools"][0]["function"]["name"])
+
+    _install(monkeypatch, handler)
+    result = probe_mod.run(["stops"])[0]
+    assert "run the file yourself" in result.replies[probe_mod.CONTINUES]
+
+
+def test_the_second_turn_replays_the_tool_result(monkeypatch):
+    """The probe has to answer the first call the way the real loop does, or it
+    is testing a conversation the agent never has."""
+    seen = {}
+
+    def handler(payload, turn, multiturn):
+        if multiturn and turn == 2:
+            seen["roles"] = [m["role"] for m in payload["messages"]]
+            return _tool_call("exec_bash")
+        return _tool_call(payload["tools"][0]["function"]["name"])
+
+    _install(monkeypatch, handler)
+    probe_mod.run(["m"])
+    assert seen["roles"] == ["user", "assistant", "tool", "user"]

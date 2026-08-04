@@ -190,13 +190,14 @@ def cmd_probe(args: argparse.Namespace) -> int:
     results = probe_mod.run(models, host=args.ollama_host)
     table = Table(title="tool calling", header_style="bold")
     table.add_column("model")
-    for label, *_ in probe_mod.PROBES:
+    labels = [label for label, *_ in probe_mod.PROBES] + [probe_mod.CONTINUES]
+    for label in labels:
         table.add_column(label, justify="center")
     table.add_column("verdict")
     for result in results:
         marks = [
             "[green]yes[/green]" if result.called.get(label) else "[red]no[/red]"
-            for label, *_ in probe_mod.PROBES
+            for label in labels
         ]
         table.add_row(
             result.model, *marks,
