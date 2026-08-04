@@ -27,6 +27,17 @@ IMAGE = env_mod.DEFAULT_IMAGE
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def a_generous_host(monkeypatch):
+    """Pin the machine these tests believe they are on.
+
+    Container resources are clamped to what the daemon actually has, so
+    without this every assertion about --cpus and --memory would pass or fail
+    depending on whose laptop ran the suite. Clamping has its own tests below.
+    """
+    monkeypatch.setattr(env_mod, "_RESOURCES", {"docker": (64, 262144)})
+
+
 def args_for(**kwargs) -> list[str]:
     return Environment(EnvironmentSpec(**kwargs))._run_args()
 
@@ -89,6 +100,85 @@ def test_unknown_environment_settings_are_rejected():
 def test_no_environment_block_means_no_container():
     assert EnvironmentSpec.from_config(None) is None
     assert EnvironmentSpec.from_config({}) is None
+
+
+def test_a_resource_ask_bigger_than_the_machine_is_clamped(monkeypatch):
+    """Docker refuses outright to start a container asking for more CPUs than
+    exist, so a benchmark tuned on a CI box would simply not run on a laptop.
+    SWE-bench asks for 8g and 4 cpus and meets a two-core VM constantly."""
+    monkeypatch.setattr(env_mod, "_RESOURCES", {"docker": (2, 4096)})
+    environment = Environment(EnvironmentSpec(cpus="4.0", memory="8g"))
+    args = environment._run_args()
+    assert args[args.index("--cpus") + 1] == "2.0"
+    # Short of the whole allocation: a container sized to every byte the daemon
+    # has gets killed by the daemon's own overhead.
+    assert env_mod._megabytes(args[args.index("--memory") + 1]) < 4096
+
+
+def test_clamping_is_recorded_rather_than_silent(monkeypatch):
+    """A suite that ran on a quarter of the intended cores is a fact about the
+    numbers, not an implementation detail."""
+    monkeypatch.setattr(env_mod, "_RESOURCES", {"docker": (2, 4096)})
+    environment = Environment(EnvironmentSpec(cpus="4.0", memory="8g"))
+    environment._run_args()
+    clamps = [e["command"] for e in environment.log if e["phase"] == "clamp"]
+    assert clamps == ["cpus 4.0->2", "memory 8g->3686m"]
+
+
+def test_an_ask_that_fits_is_left_alone(monkeypatch):
+    monkeypatch.setattr(env_mod, "_RESOURCES", {"docker": (16, 65536)})
+    environment = Environment(EnvironmentSpec(cpus="4.0", memory="8g"))
+    args = environment._run_args()
+    assert args[args.index("--memory") + 1] == "8g"
+    assert not environment.log
+
+
+def test_a_daemon_that_will_not_say_clamps_nothing(monkeypatch):
+    """Better to pass the ask through and let Docker complain than to invent a
+    ceiling from a failed query."""
+    monkeypatch.setattr(env_mod, "_RESOURCES", {"docker": (0, 0)})
+    args = Environment(EnvironmentSpec(cpus="4.0", memory="8g"))._run_args()
+    assert args[args.index("--memory") + 1] == "8g"
+
+
+def test_a_daemon_that_cannot_be_asked_reports_nothing_rather_than_raising(
+    monkeypatch
+):
+    """Resource discovery runs on the way to starting every container. It
+    failing must not be how a run dies."""
+    monkeypatch.setattr(env_mod, "_RESOURCES", {})
+    monkeypatch.setattr(
+        "subprocess.run", lambda *a, **k: (_ for _ in ()).throw(OSError("no daemon"))
+    )
+    assert env_mod.host_resources() == (0, 0)
+
+
+def test_the_daemon_is_only_asked_once(monkeypatch):
+    """It shells out, and every run in a suite would otherwise repeat it."""
+    monkeypatch.setattr(env_mod, "_RESOURCES", {})
+    calls = []
+
+    class Answer:
+        stdout = "8 17179869184"
+
+    monkeypatch.setattr(
+        "subprocess.run", lambda *a, **k: calls.append(1) or Answer()
+    )
+    assert env_mod.host_resources() == (8, 16384)
+    assert env_mod.host_resources() == (8, 16384)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "size, expected",
+    [
+        ("8g", 8192), ("512m", 512), ("1.5g", 1536),
+        ("2147483648", 2048),   # Docker also takes plain bytes
+        ("", 0), ("nonsense", 0),  # unparseable clamps nothing
+    ],
+)
+def test_reading_dockers_size_suffixes(size, expected):
+    assert env_mod._megabytes(size) == expected
 
 
 # --------------------------------------------------------------------------- #

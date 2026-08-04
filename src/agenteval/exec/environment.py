@@ -43,6 +43,16 @@ class EnvironmentError_(Exception):
     """The environment itself failed — not the command that ran in it."""
 
 
+def _megabytes(size: str) -> int:
+    """Docker's `8g` / `512m` / raw bytes, as MB. 0 when unparseable."""
+    text = str(size).strip().lower()
+    scale = {"g": 1024, "m": 1, "k": 1 / 1024}.get(text[-1:], None)
+    try:
+        return int(float(text[:-1]) * scale) if scale else int(text) // 1024 // 1024
+    except ValueError:
+        return 0
+
+
 @dataclass
 class ExecResult:
     exit_code: int
@@ -107,6 +117,12 @@ class EnvironmentSpec:
     workspace_mb: int = 512
     #: None uses the image's own user. Benchmark images frequently assume root.
     user: str | None = None
+    #: `linux/amd64` and the like. Named when a benchmark publishes images for
+    #: one architecture only — SWE-bench's are all x86_64, so a run on Apple
+    #: silicon is emulated or it does not happen. Leaving this to Docker's
+    #: default means the same task quietly fails on half the machines it is
+    #: tried on, with an exec format error rather than anything legible.
+    platform: str | None = None
     read_only_root: bool = True
 
     @classmethod
@@ -150,8 +166,36 @@ class Environment:
 
     # -- lifecycle ---------------------------------------------------------- #
 
+    def _fit_to_host(self) -> tuple[str, str]:
+        """A benchmark's resource ask, reduced to what this machine has.
+
+        Docker refuses outright to start a container asking for more CPUs than
+        exist — "range of CPUs is from 0.01 to 2.00" — so a benchmark tuned on
+        a CI box simply does not run on a laptop. Clamping is better than
+        failing and much better than lowering the ask for everyone, but it is
+        recorded rather than silent: a suite that ran on a quarter of the
+        intended cores is a fact about the numbers, not an implementation
+        detail.
+        """
+        host_cpus, host_memory_mb = host_resources(self.docker)
+        cpus, memory = str(self.spec.cpus), self.spec.memory
+        if host_cpus and float(cpus) > host_cpus:
+            self.log.append({"phase": "clamp", "command": f"cpus {cpus}->{host_cpus}",
+                             "exit_code": 0})
+            cpus = str(float(host_cpus))
+        wanted_mb = _megabytes(memory)
+        if host_memory_mb and wanted_mb and wanted_mb > host_memory_mb:
+            # Left a little headroom: a container sized to the daemon's whole
+            # allocation gets killed by the daemon's own overhead.
+            fitted = int(host_memory_mb * 0.9)
+            self.log.append({"phase": "clamp", "command": f"memory {memory}->{fitted}m",
+                             "exit_code": 0})
+            memory = f"{fitted}m"
+        return cpus, memory
+
     def _run_args(self) -> list[str]:
         name = f"agenteval-{uuid.uuid4().hex[:12]}"
+        cpus, memory = self._fit_to_host()
         args = [
             self.docker, "run", "--detach", "--name", name,
             # With a gateway this is the internal network, which has no route
@@ -161,8 +205,8 @@ class Environment:
             # No host environment crosses in, so a credential on this machine
             # is not reachable from code the agent generates.
             "--env-file", "/dev/null",
-            "--memory", self.spec.memory,
-            "--cpus", str(self.spec.cpus),
+            "--memory", memory,
+            "--cpus", cpus,
             "--pids-limit", "512",
             "--security-opt", "no-new-privileges",
             "--cap-drop", "ALL",
@@ -184,6 +228,8 @@ class Environment:
         if self.proxy:
             for variable in self.proxy.environment_variables():
                 args += ["--env", variable]
+        if self.spec.platform:
+            args += ["--platform", self.spec.platform]
         if self.spec.user:
             args += ["--user", self.spec.user]
         # Held open so exec has something to attach to; the container does no
@@ -197,13 +243,21 @@ class Environment:
         if self.spec.allow_hosts:
             # Before the workspace, so the network exists to attach it to and
             # the gateway is already answering when the first request lands.
+            # On the harness's own small image, deliberately, rather than the
+            # task's: the gateway is infrastructure, and a benchmark image is
+            # frequently gigabytes and frequently emulated. Running an HTTP
+            # proxy inside an emulated 4 GB SWE-bench image works and is absurd.
             self.proxy = Proxy(
-                self.spec.allow_hosts, image=self.spec.image,
+                self.spec.allow_hosts, image=DEFAULT_IMAGE,
                 docker=self.docker, lifetime=self.spec.lifetime,
             )
             self.proxy.start()
         done = subprocess.run(self._run_args(), capture_output=True, text=True)
         if done.returncode != 0:
+            # The gateway is already up at this point. Without this the network
+            # and its container outlive the run, and a leaked Docker network is
+            # invisible until the machine runs out of address space.
+            self.stop()
             raise EnvironmentError_(
                 f"could not start {self.spec.image!r}: {done.stderr.strip()[:600]}"
             )
@@ -325,6 +379,28 @@ class Environment:
             "log": self.log,
             "egress": egress,
         }
+
+
+def host_resources(docker: str = "docker") -> tuple[int, int]:
+    """The daemon's CPU count and memory in MB, or (0, 0) if it will not say.
+
+    Cached: this shells out, and every run in a suite would otherwise ask the
+    same question again.
+    """
+    if _RESOURCES.get(docker) is None:
+        try:
+            done = subprocess.run(
+                [docker, "info", "--format", "{{.NCPU}} {{.MemTotal}}"],
+                capture_output=True, text=True, timeout=20,
+            )
+            cpus, memory = done.stdout.split()
+            _RESOURCES[docker] = (int(cpus), int(memory) // 1024 // 1024)
+        except Exception:  # noqa: BLE001 - an unknown host clamps nothing
+            _RESOURCES[docker] = (0, 0)
+    return _RESOURCES[docker]  # type: ignore[return-value]
+
+
+_RESOURCES: dict[str, tuple[int, int] | None] = {}
 
 
 def available(docker: str = "docker") -> bool:

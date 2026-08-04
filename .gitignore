@@ -22,6 +22,11 @@ runs/
 .env.*
 *.pem
 
+# uv's lockfile. Left untracked deliberately: the only reason it exists here is
+# the optional `swebench` extra, whose transitive tree is large and irrelevant
+# to anyone who never installs it. pyproject.toml is the dependency contract.
+uv.lock
+
 # Design-system specimens: generated from ui.py by `agenteval design`, and
 # pushed to claude.ai/design rather than tracked here.
 design/

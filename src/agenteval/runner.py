@@ -44,6 +44,26 @@ class RunConfig:
     judge: LLMJudge | None = None
 
 
+def _agent_artifacts(world: World) -> list[dict[str, str]]:
+    """Documents that reached the world other than through a tool call.
+
+    Files named in `collect:` and anything a benchmark captures at grading time
+    land here. Without this they are gradeable but unreadable: the report
+    builds its artifact panel from the trajectory, so a container's whole
+    output was missing from the one view meant to show what the agent produced.
+    """
+    try:
+        documents = world.table("documents")
+    except Exception:  # noqa: BLE001 - a world without documents is fine
+        return []
+    return [
+        {"id": str(d.get("id", "")), "title": str(d.get("title", "")),
+         "content": str(d.get("content", ""))}
+        for d in documents
+        if d.get("created_by") == "agent"
+    ]
+
+
 def _note(trajectory: Trajectory, message: str) -> None:
     """Append a failure to the trajectory without discarding earlier ones."""
     trajectory.error = (
@@ -190,6 +210,7 @@ async def run_one(
         model=agent_model,
         trajectory=trajectory,
         score=score,
+        artifacts=_agent_artifacts(world),
         agent_cost_usd=agent_cost,
         judge_cost_usd=judge_cost,
         judge_model=judge_model,

@@ -18,12 +18,14 @@ from .base import (
 )
 from .humaneval import HumanEvalBenchmark
 from .local import LocalBenchmark
+from .swebench import SWEBenchBenchmark
 
 __all__ = [
     "Benchmark",
     "BenchmarkError",
     "HumanEvalBenchmark",
     "LocalBenchmark",
+    "SWEBenchBenchmark",
     "cache_root",
     "load_tasks",
     "register",

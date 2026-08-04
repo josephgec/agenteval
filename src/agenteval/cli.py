@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from . import benchmarks as bench
@@ -121,12 +122,44 @@ def gather(args: argparse.Namespace) -> tuple[list[LoadedTask], "bench.Benchmark
     return tasks, benchmark
 
 
+def report_images_to_pull(tasks: list[LoadedTask]) -> None:
+    """Say what a run is about to download, before it downloads it.
+
+    A benchmark with per-instance images is a different proposition from one
+    with a shared image: `agenteval --benchmark swebench run` across SWE-bench
+    Lite is three hundred pulls of about a gigabyte each. Finding that out from
+    a full disk two hours in is a bad way to find it out, and the fix is one
+    line of arithmetic before anything starts.
+    """
+    from .exec import environment as env_mod
+
+    images = {
+        t.spec.environment["image"]
+        for t in tasks
+        if t.spec.environment and t.spec.environment.get("image")
+    }
+    if len(images) < 2 or not env_mod.available():
+        return
+    missing = [i for i in sorted(images) if not env_mod.image_present(i)]
+    if not missing:
+        return
+    console.print(
+        f"[yellow]{len(missing)} of {len(images)} container images are not "
+        f"local[/yellow] and will be pulled on demand. For benchmarks that "
+        f"publish one image per instance that is roughly a gigabyte each — "
+        f"about {len(missing)} GB here. [dim]Use --limit to sample.[/dim]"
+    )
+
+
 def cmd_benchmarks(args: argparse.Namespace) -> int:
     table = Table(title="benchmarks", header_style="bold")
     table.add_column("name")
     table.add_column("what it is")
     for name, description in sorted(bench.registered().items()):
-        table.add_row(name, description)
+        # Escaped: a description mentioning `pip install 'agenteval[swebench]'`
+        # is otherwise rendered as `agenteval`, Rich having read the extras as
+        # a style tag — an install line that silently drops the extra.
+        table.add_row(name, escape(description))
     console.print()
     console.print(table)
     console.print(
@@ -237,6 +270,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"= {total} runs · concurrency {config.concurrency}"
         + ("" if judge else " · [dim]judge off[/dim]")
     )
+    report_images_to_pull(tasks)
 
     done = 0
 

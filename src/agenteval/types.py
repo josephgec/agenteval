@@ -245,6 +245,11 @@ class RunResult:
     judge_cost_usd: float = 0.0
     judge_model: str | None = None
     judge_usage: Usage = field(default_factory=Usage)
+    #: Documents the *harness* put in the world rather than the agent's tool
+    #: calls: files harvested out of a container, a captured diff. The report's
+    #: artifact panel is otherwise built from tool calls alone, so everything
+    #: `collect:` brings back was invisible in it.
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
     status: Status = "ok"
     started_at: float = field(default_factory=time.time)
 
@@ -314,6 +319,7 @@ class RunResult:
                 "output_tokens": self.judge_usage.output_tokens,
                 "cache_read_tokens": self.judge_usage.cache_read_input_tokens,
             },
+            "artifacts": self.artifacts,
             # Delegated rather than hand-built. These were two separate
             # serialisations of the same object, and a field added to one
             # silently never reached the saved record — which is how the

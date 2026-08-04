@@ -170,6 +170,57 @@ def test_a_run_without_an_allowlist_starts_no_gateway():
     assert Environment(EnvironmentSpec()).proxy is None
 
 
+def test_the_gateway_runs_on_the_harnesses_image_not_the_tasks(monkeypatch):
+    """The gateway is infrastructure. A benchmark image is frequently gigabytes
+    and frequently emulated, and running an HTTP proxy inside an emulated 4 GB
+    SWE-bench image works and is absurd."""
+    seen = {}
+
+    def build(allow_hosts, image, **kwargs):
+        seen["image"] = image
+        raise ProxyError("stop here")
+
+    monkeypatch.setattr("agenteval.exec.environment.Proxy", build)
+    spec = EnvironmentSpec(image="swebench/huge:latest", allow_hosts=["pypi.org"])
+    with pytest.raises(ProxyError):
+        Environment(spec).start()
+    assert seen["image"] == IMAGE
+
+
+def test_a_workspace_that_will_not_start_takes_the_gateway_with_it(monkeypatch):
+    """The gateway is already up by then. A leaked Docker network is invisible
+    until the machine runs out of address space some hours later."""
+    stopped = []
+
+    class Gateway:
+        network = "agenteval-net-test"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            stopped.append(True)
+
+        def snapshot(self):
+            return {}
+
+        def environment_variables(self):
+            return []
+
+    monkeypatch.setattr("agenteval.exec.environment.Proxy", Gateway)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess([], 1, "", "no such image"),
+    )
+    environment = Environment(EnvironmentSpec(allow_hosts=["pypi.org"]))
+    with pytest.raises(EnvironmentError_, match="could not start"):
+        environment.start()
+    assert stopped and environment.proxy is None
+
+
 def test_the_record_says_proxy_rather_than_none():
     """`network: none` in the results for a run that reached the internet would
     be a lie in the one direction that matters."""

@@ -536,3 +536,51 @@ def test_the_saved_trajectory_round_trips(tmp_path):
     assert restored.stop_reason == "end_turn"
     assert [c.name for c in restored.calls] == \
            [c.name for c in result.trajectory.calls]
+
+
+# --------------------------------------------------------------------------- #
+# Artifacts the harness collected rather than the agent sent
+# --------------------------------------------------------------------------- #
+
+
+def test_files_collected_from_a_container_reach_the_result():
+    """The report builds its artifact panel from tool calls. Everything
+    `collect:` brings back arrives in the world instead, so without this a task
+    whose entire output was a file showed an empty panel."""
+    from agenteval.runner import _agent_artifacts
+    from agenteval import World
+
+    world = World({"documents": [
+        {"id": "wiki/policy", "title": "Policy", "content": "seeded"},
+        {"id": "/workspace/out.md", "title": "out.md", "content": "# findings",
+         "created_by": "agent"},
+    ]})
+    assert _agent_artifacts(world) == [
+        {"id": "/workspace/out.md", "title": "out.md", "content": "# findings"}
+    ]
+
+
+def test_seeded_documents_are_not_claimed_as_the_agents_work():
+    from agenteval.runner import _agent_artifacts
+    from agenteval import World
+
+    world = World({"documents": [{"id": "wiki/x", "title": "X", "content": "y"}]})
+    assert _agent_artifacts(world) == []
+
+
+def test_a_world_with_no_documents_is_not_an_error():
+    from agenteval.runner import _agent_artifacts
+    from agenteval import World
+
+    assert _agent_artifacts(World({})) == []
+
+
+def test_collected_artifacts_are_saved_with_the_run():
+    from agenteval.types import RunResult, Score, Trajectory
+
+    result = RunResult(
+        task_id="t", agent="a", model=None,
+        trajectory=Trajectory("t", "a"), score=Score(),
+        artifacts=[{"id": "/w/out.md", "title": "out.md", "content": "hi"}],
+    )
+    assert result.to_dict()["artifacts"][0]["content"] == "hi"

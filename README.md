@@ -72,7 +72,7 @@ nothing scores well because it's dominated by "did *not* email X" assertions.
 ## Testing
 
 ```bash
-pytest              # 601 tests; Docker and egress tests skip if unavailable
+pytest              # 649 tests; Docker and egress tests skip if unavailable
 pytest --cov        # gated at 98%
 ```
 
@@ -279,6 +279,50 @@ def grade_in_environment(world, trajectory, environment) -> list[Check]: ...
 which runs while the container is still alive, before harvest and teardown.
 Running the tests at grading time also keeps the answer out of the agent's
 reach — a test file seeded up front is a test file the agent can read.
+
+### SWE-bench
+
+```bash
+pip install 'agenteval[swebench]'
+agenteval --benchmark swebench run --gold --limit 1     # proves the pipeline
+agenteval --benchmark swebench:verified run --agent claude --limit 20
+```
+
+The benchmark this stack was built toward, and it turned out to be the same
+three methods with two differences the exec layer already had a parameter for:
+the image is per instance, and grading runs the repository's own test suite.
+
+**The eval scripts and log parsers come from the upstream `swebench` package,
+not from here.** Which test command belongs to django 4.1 versus 3.2, and how
+to read `FAILED x - AssertionError` out of six different runners, is forty
+kilobytes of version-specific detail that upstream maintains. A copy would
+produce numbers that look like SWE-bench, drift within a release, and give no
+signal that they had. The adapter's job is narrow: fetch the dataset, build the
+container, run *their* script in it, hand *their* grader the log.
+
+What this adds over the official harness is the harness around it — the agent
+works through the same audited `ToolSession` as every other task, so its
+trajectory, step budget, forbidden-tool blocking and egress are recorded the
+same way. `resolved` is the only weighted check, so the mean is directly
+comparable to a published % resolved; the FAIL_TO_PASS / PASS_TO_PASS
+breakdown rides along at weight zero, shown but not scored.
+
+Three things that cost an afternoon each if you find them the hard way:
+
+- **The images are x86_64 only.** `platform` is pinned to `linux/amd64` and the
+  architecture is *not* detected — upstream defaults it from the host, which on
+  Apple silicon yields an arm64 image name nobody has ever published. Runs on
+  ARM are emulated: correct, and slow.
+- **They assume root and a writable `/testbed`.** `read_only_root` is off for
+  this benchmark alone.
+- **The eval scripts `pip install -e .`**, which is a real reason to need the
+  network — hence `allow_hosts` above rather than an open one.
+
+Resource asks are clamped to what the daemon actually has. SWE-bench wants 8 GB
+and 4 CPUs; Docker refuses outright to start a container asking for more CPUs
+than exist, so without clamping the benchmark simply does not run on a laptop.
+The clamp is recorded in the run, because a suite that ran on a quarter of the
+intended cores is a fact about the numbers.
 
 ### What ships
 
@@ -489,6 +533,7 @@ agenteval benchmarks                              # what can supply tasks
 agenteval list
 agenteval run --gold                              # offline, free
 agenteval --benchmark humaneval run --gold --limit 20
+agenteval --benchmark swebench run --gold --limit 1
 agenteval run --agent claude:opus-5 -k 5 -c 8     # 5 repeats, 8 concurrent
 agenteval run --agent claude:sonnet-5:medium --tag writing
 agenteval run --agent claude --no-judge --fail-under 0.8   # CI gate

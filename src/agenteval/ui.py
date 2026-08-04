@@ -552,16 +552,27 @@ function renderDetail() {
     </li>`;
   }).join('') + `</ol>` : `<p class="empty">The agent made no tool calls.</p>`;
 
-  const artifacts = t.calls.filter(c => ARTIFACTS[c.name] && !c.blocked_reason)
-    .map(c => { const a = ARTIFACTS[c.name](c.input); return `<article class="artifact">
-      <div class="kind"><span class="eyebrow">${esc(a.kind)}</span>
-        <span class="to">${esc(a.to)}</span></div>
-      ${a.title ? `<h4>${esc(a.title)}</h4>` : ''}
-      <p class="doc">${esc(a.body)}</p></article>`; }).join('');
+  const card = (kind, to, title, body) => `<article class="artifact">
+      <div class="kind"><span class="eyebrow">${esc(kind)}</span>
+        <span class="to">${esc(to)}</span></div>
+      ${title ? `<h4>${esc(title)}</h4>` : ''}
+      <p class="doc">${esc(body)}</p></article>`;
+
+  // Two sources, deliberately. Tool calls cover what the agent sent and
+  // filed; `r.artifacts` covers what the harness carried out of a container —
+  // a collected report, a captured diff. Those never pass through a tool call,
+  // so a panel built from the trajectory alone showed nothing at all for a
+  // task whose entire output was a file.
+  const artifacts =
+    t.calls.filter(c => ARTIFACTS[c.name] && !c.blocked_reason)
+      .map(c => { const a = ARTIFACTS[c.name](c.input);
+                  return card(a.kind, a.to, a.title, a.body); }).join('')
+    + (r.artifacts || []).map(a =>
+        card('Collected', a.id, a.title, a.content)).join('');
 
   const checks = s.checks.length ? `<ul class="checks">` + s.checks.map(c =>
     `<li class="${c.passed?'pass':'fail'}"><span class="mark">${c.passed?'✓':'✗'}</span>
-     <span>${esc(c.name)}${c.passed?'':` <span class="why">— ${esc(c.detail)}</span>`}</span>
+     <span>${esc(c.name)}${c.detail?` <span class="why">— ${esc(c.detail)}</span>`:''}</span>
      <span class="w">${c.weight}</span></li>`).join('') + `</ul>`
     : `<p class="empty">No state assertions ran.</p>`;
 
